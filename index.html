@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestión de OC en Parcialidades, Calendario y Control de Facturas REP</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=20260918_1">
+</head>
+<body>
+
+  <!-- Barra de Navegación Superior -->
+  <header class="navbar-custom py-3 px-4 d-flex justify-content-between align-items-center">
+    <div class="d-flex align-items-center gap-3">
+      <div class="bg-primary text-white p-2 rounded-3 d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+      </div>
+      <div>
+        <h5 class="m-0 fw-bold text-dark">Control de Órdenes de Compra en Parcialidades (PPD)</h5>
+        <small class="text-secondary">Calendario de Pagos, Vencimientos y Fiscalización Automatizada de Complementos de Pago (REP)</small>
+      </div>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <button type="button" class="btn btn-sm btn-outline-danger" id="btn-ejecutar-cron" onclick="dispararAuditoriaManual()">
+        ⚡ Ejecutar Auditoría de Recordatorios REP
+      </button>
+      <a href="../version_sheets_drive/index.html" class="btn btn-sm btn-outline-secondary">
+        ← Volver al Sistema General
+      </a>
+    </div>
+  </header>
+
+  <div class="container-fluid py-4 px-4">
+
+    <!-- KPI CARDS -->
+    <div class="row g-3 mb-4">
+      <div class="col-xl-3 col-md-6">
+        <div class="card card-kpi p-3 h-100">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <span class="text-muted small fw-semibold text-uppercase">Total Comprometido en OCs</span>
+              <h3 class="m-0 fw-bold mt-1 font-monospace text-dark" id="kpi-total-comprometido">$0.00</h3>
+            </div>
+            <div class="kpi-icon bg-primary-subtle text-primary">💰</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-xl-3 col-md-6">
+        <div class="card card-kpi p-3 h-100">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <span class="text-muted small fw-semibold text-uppercase">Total Abonado / Pagado</span>
+              <h3 class="m-0 fw-bold mt-1 font-monospace text-success" id="kpi-total-pagado">$0.00</h3>
+            </div>
+            <div class="kpi-icon bg-success-subtle text-success">✓</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-xl-2 col-md-6">
+        <div class="card card-kpi p-3 h-100">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <span class="text-muted small fw-semibold text-uppercase">Saldo Pendiente</span>
+              <h4 class="m-0 fw-bold mt-1 font-monospace text-danger" id="kpi-saldo-restante">$0.00</h4>
+            </div>
+            <div class="kpi-icon bg-danger-subtle text-danger">⏱</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-xl-2 col-md-6">
+        <div class="card card-kpi p-3 h-100 border-danger">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <span class="text-danger small fw-bold text-uppercase">REPs Faltantes</span>
+              <h3 class="m-0 fw-bold mt-1 font-monospace text-danger" id="kpi-reps-faltantes">0</h3>
+            </div>
+            <div class="kpi-icon bg-danger text-white">🚨</div>
+          </div>
+          <small class="text-danger" style="font-size: 11px;">Alerta activa: 2 días / 7 días</small>
+        </div>
+      </div>
+      <div class="col-xl-2 col-md-6">
+        <div class="card card-kpi p-3 h-100">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <span class="text-muted small fw-semibold text-uppercase">Próximos 7 Días</span>
+              <h4 class="m-0 fw-bold mt-1 font-monospace text-warning" id="kpi-proximos-pagos">$0.00</h4>
+            </div>
+            <div class="kpi-icon bg-warning-subtle text-warning">📅</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECCIÓN DE ALERTA INTELIGENTE Y REGLAS DE RECORDATORIO REP -->
+    <div class="card mb-4 border-warning shadow-sm">
+      <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+        <div class="d-flex align-items-center gap-2">
+          <span class="badge bg-danger text-white">Regla Automatizada</span>
+          <strong class="text-dark small">Fiscalización de Facturas Complementarias (REP) tras el pago:</strong>
+          <span class="text-muted small">Recordatorio al <strong>usuario cada 2 días</strong> | Recordatorio al <strong>proveedor cada 7 días (semanal)</strong></span>
+        </div>
+        <span class="cron-badge">Trigger Automático Activo</span>
+      </div>
+      <div class="card-body py-2 px-3" id="contenedor-alertas-auditoria-rep">
+        <!-- Se llena dinámicamente -->
+      </div>
+    </div>
+
+    <div class="row g-4">
+      <!-- COLUMNA IZQUIERDA: REGISTRO ÁGIL DE OC CON PARCIALIDADES -->
+      <div class="col-lg-5">
+        <div class="card shadow-sm h-100">
+          <div class="card-header bg-white py-3">
+            <h6 class="m-0 fw-bold text-primary d-flex align-items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+              Nueva Orden de Compra en Parcialidades
+            </h6>
+          </div>
+          <div class="card-body">
+            <form id="form-crear-oc" onsubmit="guardarNuevaOrden(event)">
+              <div class="row g-3">
+                <!-- Folio OC -->
+                <div class="col-md-7">
+                  <label class="form-label small fw-semibold">ID / Folio de la Orden de Compra *</label>
+                  <div class="input-group input-group-sm">
+                    <input type="text" id="oc-folio" class="form-control font-monospace fw-bold" required placeholder="Ej. OC-9021">
+                    <button class="btn btn-outline-secondary" type="button" onclick="alternarEdicionFolio()" title="Editar o ingresar folio manual">✏️</button>
+                  </div>
+                  <div class="form-text small" style="font-size: 11px;">Se autogenera o puedes escribir el de tu empresa.</div>
+                </div>
+
+                <div class="col-md-5">
+                  <label class="form-label small fw-semibold">Día de Pago del Mes *</label>
+                  <select id="oc-dia-pago" class="form-select form-select-sm fw-bold text-primary" onchange="previsualizarPlanPagos()">
+                    <option value="1" selected>Día 1 de cada mes</option>
+                    <option value="5">Día 5 de cada mes</option>
+                    <option value="10">Día 10 de cada mes</option>
+                    <option value="15">Día 15 de cada mes (Quincenal)</option>
+                    <option value="20">Día 20 de cada mes</option>
+                    <option value="28">Día 28 / Fin de mes</option>
+                  </select>
+                </div>
+
+                <!-- Proveedor y RFC -->
+                <div class="col-md-7">
+                  <label class="form-label small fw-semibold">Razón Social del Proveedor *</label>
+                  <input type="text" id="oc-proveedor" class="form-control form-control-sm" required placeholder="Ej. Aceros y Tuberías del Norte S.A.">
+                </div>
+                <div class="col-md-5">
+                  <label class="form-label small fw-semibold">RFC</label>
+                  <input type="text" id="oc-rfc" class="form-control form-control-sm text-uppercase" placeholder="ATN190805ABC">
+                </div>
+
+                <!-- Correo Proveedor -->
+                <div class="col-md-12">
+                  <label class="form-label small fw-semibold text-primary">Correo Electrónico para Recordatorios de Factura/REP *</label>
+                  <input type="email" id="oc-correo" class="form-control form-control-sm" required placeholder="facturacion@proveedor.com">
+                  <div class="form-text small" style="font-size: 11px;">A esta cuenta se enviará el recordatorio semanal si no han emitido el REP.</div>
+                </div>
+
+                <!-- Concepto -->
+                <div class="col-12">
+                  <label class="form-label small fw-semibold">Concepto / Descripción del Acuerdo</label>
+                  <input type="text" id="oc-concepto" class="form-control form-control-sm" placeholder="Ej. Adquisición de lote con financiamiento a 6 meses">
+                </div>
+
+                <!-- Monto Total y Plazo -->
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Monto Total Acordado (MXN) *</label>
+                  <input type="number" id="oc-monto-total" class="form-control form-control-sm font-monospace fw-bold" required min="1" step="0.01" placeholder="Ej. 120000" oninput="previsualizarPlanPagos()">
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Plazo Comprometido *</label>
+                  <select id="oc-plazo-meses" class="form-select form-select-sm" onchange="previsualizarPlanPagos()">
+                    <option value="2">2 Meses (2 Pagos)</option>
+                    <option value="3">3 Meses (3 Pagos)</option>
+                    <option value="4">4 Meses (4 Pagos)</option>
+                    <option value="6" selected>6 Meses (6 Pagos)</option>
+                    <option value="9">9 Meses (9 Pagos)</option>
+                    <option value="12">12 Meses (12 Pagos)</option>
+                  </select>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Fecha del Primer Pago *</label>
+                  <input type="date" id="oc-fecha-inicio" class="form-control form-control-sm" required onchange="previsualizarPlanPagos()">
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Factura Global PPD (Opcional)</label>
+                  <input type="file" id="oc-factura-global-file" class="form-control form-control-sm" accept=".pdf,.xml">
+                </div>
+              </div>
+
+              <!-- PREVIEW DEL PLAN DE PAGOS -->
+              <div class="mt-4 pt-3 border-top">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span class="small fw-bold text-secondary">Proyección de Pagos y Fechas Programadas:</span>
+                  <span class="badge bg-light text-primary border" id="preview-resumen-cuota"></span>
+                </div>
+                <div class="table-responsive rounded border bg-light" style="max-height: 180px; overflow-y: auto;">
+                  <table class="table table-sm table-hover align-middle mb-0" style="font-size: 12px;">
+                    <thead class="table-white sticky-top">
+                      <tr>
+                        <th class="text-center">#</th>
+                        <th>Fecha de Pago</th>
+                        <th class="text-end">Monto Cuota</th>
+                        <th class="text-center">Estatus</th>
+                      </tr>
+                    </thead>
+                    <tbody id="tbody-preview-plan">
+                      <!-- Dinámico -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="mt-4 d-grid">
+                <button type="submit" id="btn-guardar-oc" class="btn btn-primary fw-semibold">
+                  ✓ Registrar OC y Crear Calendario de Pagos
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- COLUMNA DERECHA: CALENDARIO DE PAGOS INTERACTIVO -->
+      <div class="col-lg-7">
+        <div class="card shadow-sm h-100">
+          <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center gap-2">
+              <h6 class="m-0 fw-bold text-primary">Calendario de Transferencias y Recordatorios</h6>
+              <span class="badge bg-light text-dark border" id="calendario-mes-titulo"></span>
+            </div>
+            <div class="d-flex align-items-center gap-1">
+              <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="cambiarMesCalendario(-1)">‹ Mes Anterior</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="irAMesActual()">Hoy</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="cambiarMesCalendario(1)">Siguiente ›</button>
+            </div>
+          </div>
+          <div class="card-body p-3">
+            <!-- Filtros Rápidos de Calendario -->
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <div class="d-flex gap-2">
+                <button type="button" class="btn btn-sm btn-outline-primary active" onclick="filtrarCalendario('TODOS')">Todos</button>
+                <button type="button" class="btn btn-sm btn-outline-warning" onclick="filtrarCalendario('PENDIENTES')">⏱ Por Pagar</button>
+                <button type="button" class="btn btn-sm btn-outline-success" onclick="filtrarCalendario('PAGADOS')">✓ Pagados</button>
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="filtrarCalendario('REP_ALERTA')">🚨 REP Pendiente</button>
+              </div>
+              <small class="text-muted">Haz clic en cualquier evento para registrar abono o subir REP</small>
+            </div>
+
+            <!-- Cabecera de días -->
+            <div class="calendar-grid mb-1">
+              <div class="calendar-header-day">Dom</div>
+              <div class="calendar-header-day">Lun</div>
+              <div class="calendar-header-day">Mar</div>
+              <div class="calendar-header-day">Mié</div>
+              <div class="calendar-header-day">Jue</div>
+              <div class="calendar-header-day">Vie</div>
+              <div class="calendar-header-day">Sáb</div>
+            </div>
+
+            <!-- Cuadrícula de días -->
+            <div class="calendar-grid" id="calendar-grid-days">
+              <!-- Renderizado dinámico -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TABLA 1: ÓRDENES DE COMPRA ACTIVAS -->
+    <div class="card shadow-sm mt-4">
+      <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <h6 class="m-0 fw-bold text-dark">Órdenes de Compra en Parcialidades Registradas</h6>
+        <span class="small text-muted">Haz clic en "Ver Parcialidades" para filtrar el desglose inferior</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" style="font-size: 13px;">
+          <thead class="table-light">
+            <tr>
+              <th>Folio OC</th>
+              <th>Proveedor</th>
+              <th>Monto Total</th>
+              <th>Avance de Pagos</th>
+              <th>Esquema Pactado</th>
+              <th>Estatus OC</th>
+              <th class="text-center">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-tabla-ordenes">
+            <!-- Dinámico -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TABLA 2: DESGLOSE COMPLETO DE PARCIALIDADES Y FISCALIZACIÓN REP -->
+    <div class="card shadow-sm mt-4 mb-5" id="seccion-tabla-parcialidades">
+      <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <div>
+          <h6 class="m-0 fw-bold text-primary">Detalle de Parcialidades, Comprobantes y Complementos (REP)</h6>
+          <small class="text-muted">Control estricto de comprobantes de pago y estado de la factura complementaria del SAT</small>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <label class="small fw-semibold text-muted mb-0">Filtrar por OC:</label>
+          <select id="select-filtro-tabla-oc" class="form-select form-select-sm" style="width: 200px;" onchange="filtrarParcialidadesPorOC(this.value)">
+            <option value="TODAS">Todas las Órdenes</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover table-parcialidades align-middle mb-0" style="font-size: 13px;">
+          <thead class="table-light">
+            <tr>
+              <th>ID Pago</th>
+              <th>Orden de Compra</th>
+              <th>Parcialidad</th>
+              <th>Fecha Programada</th>
+              <th>Monto</th>
+              <th>Estatus Transferencia</th>
+              <th>Complemento REP</th>
+              <th class="text-end">Operación</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-tabla-parcialidades">
+            <!-- Dinámico -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- MODAL: REGISTRAR ABONO / PAGO DE PARCIALIDAD -->
+  <div class="modal fade" id="modalRegistrarAbono" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title fw-bold text-success">Registrar Transferencia Bancaria</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <form onsubmit="guardarAbonoDesdeModal(event)">
+          <div class="modal-body">
+            <input type="hidden" id="modal-abono-id-parc">
+            <div class="bg-light p-3 rounded mb-3">
+              <span class="text-muted small d-block">Parcialidad seleccionada:</span>
+              <strong class="text-primary font-monospace fs-6" id="modal-abono-titulo-ref"></strong>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Monto Pagado (MXN) *</label>
+              <input type="number" id="modal-abono-monto" class="form-control font-monospace fw-bold" required step="0.01">
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Fecha en que se efectuó la Transferencia *</label>
+              <input type="date" id="modal-abono-fecha" class="form-control" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Ficha / Comprobante Bancario (PDF/Imagen)</label>
+              <input type="file" id="modal-abono-comprobante-file" class="form-control" accept=".pdf,.png,.jpg,.jpeg">
+            </div>
+            <div class="alert alert-warning small py-2 mb-0">
+              ⚠️ Al registrar este pago, el estatus pasará automáticamente a <strong>REP PENDIENTE</strong>. Si concluye el mes y el proveedor no emite la factura, se activarán los recordatorios automáticos.
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-success btn-sm px-3">Confirmar Pago Realizado</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: SUBIR COMPLEMENTO DE PAGO (REP) -->
+  <div class="modal fade" id="modalSubirREP" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title fw-bold text-primary">Adjuntar Factura Complementaria (REP)</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <form onsubmit="guardarREPDesdeModal(event)">
+          <div class="modal-body">
+            <input type="hidden" id="modal-rep-id-parc">
+            <div class="bg-light p-3 rounded mb-3">
+              <span class="text-muted small d-block">Subiendo complemento fiscal para:</span>
+              <strong class="text-primary font-monospace fs-6" id="modal-rep-titulo-ref"></strong>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Archivo XML o PDF del Complemento de Pago (REP) *</label>
+              <input type="file" id="modal-rep-file" class="form-control" accept=".xml,.pdf" required>
+            </div>
+            <div class="alert alert-info small py-2 mb-0">
+              ✓ Una vez adjuntado el REP, se cancelarán las alertas de recordatorio para esta parcialidad y quedará solventada fiscalmente.
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-primary btn-sm px-3">Validar y Guardar REP</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="app.js?v=20260918_1"></script>
+</body>
+</html>

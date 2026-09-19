@@ -1,0 +1,165 @@
+/* styles.css - Interfaz Ejecutiva para Gestión de OC en Parcialidades, Calendario y Control de Facturas/REP */
+:root {
+  --primary: #0054a6;
+  --primary-hover: #003d7a;
+  --primary-light: #eef5fc;
+  --success: #2fb344;
+  --warning: #f59f00;
+  --danger: #d63939;
+  --info: #4299e1;
+  --dark: #1e293b;
+  --light-bg: #f8fafc;
+  --border-color: #e2e8f0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background-color: var(--light-bg);
+  color: var(--dark);
+  margin: 0;
+  padding: 0;
+}
+
+/* Navbar y Header */
+.navbar-custom {
+  background-color: #ffffff;
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+}
+
+/* Tarjetas y Estadísticas */
+.card-kpi {
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: #ffffff;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card-kpi:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0,0,0,0.04);
+}
+
+.kpi-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+}
+
+/* Badges Específicos */
+.badge-rep-urgente {
+  background-color: #ffe3e3;
+  color: #c92a2a;
+  border: 1px solid #ffa8a8;
+  font-weight: 600;
+}
+
+.badge-rep-al-dia {
+  background-color: #ebfbee;
+  color: #2b8a3e;
+  border: 1px solid #b2f2bb;
+  font-weight: 600;
+}
+
+.badge-pago-proximo {
+  background-color: #fff9db;
+  color: #e67700;
+  border: 1px solid #ffe066;
+  font-weight: 600;
+}
+
+/* Calendario Cuadrícula */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.calendar-header-day {
+  text-align: center;
+  font-weight: 700;
+  font-size: 0.8rem;
+  color: #64748b;
+  text-transform: uppercase;
+  padding: 8px 0;
+}
+
+.calendar-cell {
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  min-height: 90px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  transition: background 0.15s;
+}
+
+.calendar-cell:hover {
+  background-color: #f1f5f9;
+}
+
+.calendar-cell.other-month {
+  background: #f8fafc;
+  opacity: 0.45;
+}
+
+.calendar-cell.today {
+  border: 2px solid var(--primary);
+  background-color: var(--primary-light);
+}
+
+.calendar-date-number {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #475569;
+  margin-bottom: 4px;
+}
+
+.calendar-event-item {
+  font-size: 0.72rem;
+  padding: 2px 5px;
+  border-radius: 4px;
+  margin-bottom: 3px;
+  line-height: 1.2;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+.calendar-event-item.pendiente {
+  background-color: #fff3bf;
+  color: #d9480f;
+  border-left: 3px solid #f59f00;
+}
+
+.calendar-event-item.pagado {
+  background-color: #d3f9d8;
+  color: #2b8a3e;
+  border-left: 3px solid #2fb344;
+}
+
+.calendar-event-item.rep-pendiente {
+  background-color: #ffe3e3;
+  color: #c92a2a;
+  border-left: 3px solid #d63939;
+}
+
+/* Tabla de Amortización */
+.table-parcialidades tbody tr:hover {
+  background-color: #f8fafc;
+}
+
+.cron-badge {
+  font-family: monospace;
+  font-size: 0.75rem;
+  background: #e2e8f0;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
