@@ -1,7 +1,7 @@
 // app.js - Lógica FrontEnd para Gestión de OC en Parcialidades, Calendario y Control de Facturas/REP
 // Se conecta a Google Apps Script y dispone de fallback reactivo local e interactivo.
 
-const SCRIPT_URL_PARCIALIDADES = "https://script.google.com/macros/s/AKfycbwmMN_VBF-90TV3ZguuyGFgWrKnV8oFSjaj1As8cgFQaA4nohpYQ3MEtM3OjaTUmG6t/exec";
+const SCRIPT_URL_PARCIALIDADES = "https://script.google.com/macros/s/AKfycbzmZxggXAHEiqtwXDcdOaNLTH4JsC-4t962bwTnit7FgFwBXYOuYwyEyqkSOv0P068d/exec";
 
 // Estado en memoria
 let estadoApp = {
@@ -278,7 +278,7 @@ function actualizarSelectorOCsArchivos(folioSeleccionar = null) {
           const parsedP = JSON.parse(guardadoP);
           if (Array.isArray(parsedP)) listaParc = parsedP;
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     if (listaParc.length > 0) {
@@ -529,7 +529,7 @@ function renderizarCalendario() {
         if (fechaRef === fechaIsoDia) {
           if (estadoApp.filtroCalendario === "TODOS" || estadoApp.filtroCalendario === "FACTURA_FALTANTE" || estadoApp.filtroCalendario === "PENDIENTES") {
             const divFactura = document.createElement("div");
-            divFactura.className = "calendar-event-item" ;
+            divFactura.className = "calendar-event-item";
             divFactura.style.backgroundColor = "#fff3cd";
             divFactura.style.color = "#856404";
             divFactura.style.borderLeft = "3px solid #ffc107";
