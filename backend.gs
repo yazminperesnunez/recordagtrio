@@ -55,6 +55,10 @@ function doPost(e) {
       return respuestaJSON(enviarRecordatorioEspecifico(data));
     }
 
+    if (accion === "enviarRecordatorioFacturaGlobal") {
+      return respuestaJSON(enviarRecordatorioFacturaGlobalProveedor(data));
+    }
+
     if (accion === "ejecutarAuditoriaRecordatorios") {
       return respuestaJSON(ejecutarAuditoriaYEnvioRecordatoriosAutomaticos());
     }
@@ -92,6 +96,14 @@ function doGet(e) {
       monto: e.parameter.monto || 0,
       proveedor: e.parameter.proveedor || "",
       correoProveedor: e.parameter.correoProveedor || ""
+    }));
+  }
+  if (accion === "enviarRecordatorioFacturaGlobal") {
+    return respuestaJSON(enviarRecordatorioFacturaGlobalProveedor({
+      folioOC: e.parameter.folioOC || "",
+      proveedor: e.parameter.proveedor || "",
+      correoProveedor: e.parameter.correoProveedor || "",
+      montoTotal: e.parameter.montoTotal || 0
     }));
   }
   return respuestaJSON({ success: true, message: "API Parcialidades y Control REP Activa" });
@@ -422,12 +434,35 @@ function procesarAgregarArchivosAOrden(data) {
 function ejecutarAuditoriaYEnvioRecordatoriosAutomaticos() {
   const ss = getSpreadsheet();
   const sheetParc = ss.getSheetByName("Calendario_Pagos");
-  const dataParc = sheetParc.getDataRange().getValues();
+  const sheetOC = ss.getSheetByName("OC_Parcialidades");
+  const dataParc = sheetParc ? sheetParc.getDataRange().getValues() : [];
+  const dataOC = sheetOC ? sheetOC.getDataRange().getValues() : [];
 
   const hoy = new Date();
   let recordatoriosEnviadosUsuario = 0;
   let recordatoriosEnviadosProveedor = 0;
+  let alertasFacturaGlobal = 0;
   const logDetalle = [];
+
+  // CASO 0: AUDITAR FACTURAS GLOBALES PPD FALTANTES (Paso 1 previo al primer pago)
+  for (let k = 1; k < dataOC.length; k++) {
+    const ocFolio = dataOC[k][0];
+    const ocProv = dataOC[k][1];
+    const ocCorreo = dataOC[k][3];
+    const ocMonto = dataOC[k][5];
+    const ocFacturaUrl = dataOC[k][12];
+
+    if (ocFolio && !ocFacturaUrl && ocCorreo) {
+      alertasFacturaGlobal++;
+      logDetalle.push({
+        folioOC: ocFolio,
+        tipo: "FACTURA_GLOBAL_FALTANTE",
+        proveedor: ocProv,
+        correo: ocCorreo,
+        mensaje: "Requiere Factura Global PPD antes de procesar el primer abono"
+      });
+    }
+  }
 
   for (let i = 1; i < dataParc.length; i++) {
     const row = dataParc[i];
@@ -534,6 +569,7 @@ function ejecutarAuditoriaYEnvioRecordatoriosAutomaticos() {
     success: true,
     totalAlertasUsuario: recordatoriosEnviadosUsuario,
     totalAlertasProveedor: recordatoriosEnviadosProveedor,
+    totalAlertasFacturaGlobal: alertasFacturaGlobal,
     detalle: logDetalle
   };
 }
@@ -716,11 +752,52 @@ function enviarCorreoRequerimientoProveedor(correoProv, provNombre, folioOC, num
           <li><strong>Fecha de Pago Realizada:</strong> ${fechaPago}</li>
         </ul>
         <p>De conformidad con las disposiciones fiscales aplicables (Artículo 29-A del CFF), le solicitamos atentamente <strong>emitir y remitir el CFDI con Complemento para Recepción de Pagos (REP)</strong> a la brevedad posible.</p>
-        <p style="font-size: 13px; color: #64748b;">Por favor responda a este correo adjuntando el archivo XML y PDF de dicho complemento fiscal.</p>
+        <p style="font-size: 13px; color: #64748b;">Puede responder a este correo adjuntando el archivo XML y PDF, o bien cargarlo directamente a través de nuestro <strong>Portal de Autoservicio para Proveedores</strong> para solventarlo en tiempo real.</p>
       </div>
     </div>
   `;
   enviarEmailUniversal(correoProv, asunto, cuerpoHtml);
+}
+
+function enviarRecordatorioFacturaGlobalProveedor(data) {
+  const folioOC = data.folioOC || "";
+  const provNombre = data.proveedor || "Proveedor";
+  const correoProv = data.correoProveedor || "";
+  const montoTotal = data.montoTotal || 0;
+
+  if (!correoProv) throw new Error("No hay correo del proveedor especificado");
+
+  const asunto = `📄 [REQUISITO INICIAL OBLIGATORIO] Emisión de Factura Global PPD - OC ${folioOC}`;
+  const cuerpoHtml = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;">
+      <div style="background-color: #f59f00; color: #1e293b; padding: 18px 24px;">
+        <h3 style="margin: 0; font-size: 18px;">Requerimiento: Emisión de Factura Global (Método PPD)</h3>
+      </div>
+      <div style="padding: 24px; color: #1e293b; line-height: 1.6;">
+        <p>Estimado(a) <strong>${provNombre}</strong>,</p>
+        <p>Le notificamos que el proceso para la siguiente Orden de Compra diferida en parcialidades se encuentra activo en nuestro sistema de pagos:</p>
+        <ul style="background: #f8fafc; padding: 16px 30px; border-radius: 6px;">
+          <li><strong>Orden de Compra:</strong> ${folioOC}</li>
+          <li><strong>Proveedor:</strong> ${provNombre}</li>
+          <li><strong>Monto Total Pactado:</strong> $${Number(montoTotal).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN</li>
+        </ul>
+        <p>De acuerdo con el esquema convenido y la normatividad fiscal vigente, le solicitamos atentamente <strong>emitir y remitirnos la Factura Global madre</strong> bajo las siguientes características:</p>
+        <ul>
+          <li><strong>Método de Pago:</strong> PPD (Pago en parcialidades o diferido)</li>
+          <li><strong>Forma de Pago:</strong> 99 (Por definir)</li>
+        </ul>
+        <p style="color: #b45309; font-weight: bold;">Este comprobante fiscal es el paso indispensable previo a efectuar el primer abono y recibir los posteriores Complementos de Pago (REP).</p>
+        <p style="font-size: 13px; color: #64748b;">Favor de responder a este correo adjuntando los archivos XML y PDF de su factura global.</p>
+      </div>
+    </div>
+  `;
+
+  enviarEmailUniversal(correoProv, asunto, cuerpoHtml);
+  if (EMAIL_NOTIFICACIONES_ADMIN && EMAIL_NOTIFICACIONES_ADMIN !== correoProv) {
+    enviarEmailUniversal(EMAIL_NOTIFICACIONES_ADMIN, `[Copia Interna] Requerimiento Factura Global PPD: ${folioOC}`, cuerpoHtml);
+  }
+
+  return { success: true, mensaje: "Recordatorio de Factura Global enviado al proveedor: " + correoProv };
 }
 
 function enviarEmailUniversal(destinatario, asunto, htmlBody) {

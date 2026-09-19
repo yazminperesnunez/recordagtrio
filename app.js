@@ -17,8 +17,17 @@ let estadoApp = {
 // ==========================================
 document.addEventListener("DOMContentLoaded", () => {
   inicializarValoresPorDefecto();
+  actualizarSelectorOCsArchivos();
   cargarDatos();
   renderizarCalendario();
+
+  // Escuchar cambio de pestaña Bootstrap para refrescar el select
+  const tabAdjuntos = document.getElementById("tab-adjuntar-archivos-btn");
+  if (tabAdjuntos) {
+    tabAdjuntos.addEventListener("shown.bs.tab", () => {
+      actualizarSelectorOCsArchivos();
+    });
+  }
 });
 
 function inicializarValoresPorDefecto() {
@@ -239,14 +248,73 @@ function actualizarSelectorOCsArchivos(folioSeleccionar = null) {
   const select = document.getElementById("adjunto-select-oc");
   if (!select) return;
 
-  const valorActual = folioSeleccionar || select.value;
+  const valorGuardado = folioSeleccionar || select.value;
   select.innerHTML = '<option value="">-- Elige una Orden de Compra --</option>';
 
-  estadoApp.ordenes.forEach(oc => {
+  let listaOrdenes = (estadoApp.ordenes && estadoApp.ordenes.length > 0) ? estadoApp.ordenes : [];
+
+  // Fallback 1: Si estadoApp.ordenes está vacío, intentar recuperar de localStorage
+  if (listaOrdenes.length === 0) {
+    try {
+      const guardado = localStorage.getItem("oc_parcialidades_data");
+      if (guardado) {
+        const parsed = JSON.parse(guardado);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          listaOrdenes = parsed;
+        }
+      }
+    } catch (e) {
+      console.warn("Aviso leyendo local storage:", e);
+    }
+  }
+
+  // Fallback 2: Si aún está vacío pero hay parcialidades (en memoria o local), extraer los folios
+  if (listaOrdenes.length === 0) {
+    let listaParc = (estadoApp.parcialidades && estadoApp.parcialidades.length > 0) ? estadoApp.parcialidades : [];
+    if (listaParc.length === 0) {
+      try {
+        const guardadoP = localStorage.getItem("calendario_parcialidades_data");
+        if (guardadoP) {
+          const parsedP = JSON.parse(guardadoP);
+          if (Array.isArray(parsedP)) listaParc = parsedP;
+        }
+      } catch (e) {}
+    }
+
+    if (listaParc.length > 0) {
+      const mapaOC = new Map();
+      listaParc.forEach(p => {
+        if (p.folioOC && !mapaOC.has(p.folioOC)) {
+          mapaOC.set(p.folioOC, {
+            folioOC: p.folioOC,
+            proveedor: p.proveedor || "Proveedor",
+            montoTotal: p.montoProgramado || 0,
+            saldoPendiente: 0,
+            plazoMeses: 1
+          });
+        }
+      });
+      listaOrdenes = Array.from(mapaOC.values());
+    }
+  }
+
+  if (listaOrdenes.length === 0) {
+    const optVacia = document.createElement("option");
+    optVacia.value = "";
+    optVacia.textContent = "No hay OCs creadas aún (Crea una en la otra pestaña)";
+    select.appendChild(optVacia);
+    alSeleccionarOCParaAdjuntos();
+    return;
+  }
+
+  listaOrdenes.forEach(oc => {
+    if (!oc || !oc.folioOC) return;
     const opt = document.createElement("option");
     opt.value = oc.folioOC;
-    opt.textContent = `${oc.folioOC} - ${oc.proveedor} (${formatoMoneda(oc.montoTotal)})`;
-    if (oc.folioOC === valorActual) opt.selected = true;
+    const prov = oc.proveedor ? ` - ${oc.proveedor}` : "";
+    const monto = oc.montoTotal ? ` (${formatoMoneda(oc.montoTotal)})` : "";
+    opt.textContent = `${oc.folioOC}${prov}${monto}`;
+    if (oc.folioOC === valorGuardado) opt.selected = true;
     select.appendChild(opt);
   });
 
@@ -437,19 +505,47 @@ function renderizarCalendario() {
     cell.className = `calendar-cell ${esHoy ? 'today' : ''}`;
     cell.innerHTML = `<span class="calendar-date-number">${dia} ${esHoy ? '<small class="text-primary fw-bold ms-1">(Hoy)</small>' : ''}</span>`;
 
-    // Buscar eventos en esta fecha
+    // Buscar eventos de parcialidades en esta fecha
     const eventos = estadoApp.parcialidades.filter(p => {
-      // Si ya se pagó y queremos ver cuándo se pagó o cuándo tocaba:
       const coincideFecha = p.fechaProgramada === fechaIsoDia || p.fechaPagoReal === fechaIsoDia;
       if (!coincideFecha) return false;
+
+      const ocPadre = estadoApp.ordenes.find(o => o.folioOC === p.folioOC);
+      const faltaFacturaGlobal = ocPadre && !ocPadre.facturaGlobalUrl;
 
       if (estadoApp.filtroCalendario === "PENDIENTES") return p.estatusPago !== "PAGADO";
       if (estadoApp.filtroCalendario === "PAGADOS") return p.estatusPago === "PAGADO";
       if (estadoApp.filtroCalendario === "REP_ALERTA") return p.estatusREP === "PENDIENTE";
+      if (estadoApp.filtroCalendario === "FACTURA_FALTANTE") return faltaFacturaGlobal;
       return true;
     });
 
+    // 1. Mostrar recordatorio de Factura Global PPD si coincide con la fecha del 1er pago de la OC
+    estadoApp.ordenes.forEach(oc => {
+      if (!oc.facturaGlobalUrl) {
+        // Encontrar la fecha de la primera parcialidad
+        const primeraParc = estadoApp.parcialidades.find(p => p.folioOC === oc.folioOC && p.numParcialidad.includes(" 1 "));
+        const fechaRef = primeraParc ? primeraParc.fechaProgramada : (oc.fechaCreacion || hoyStr);
+        if (fechaRef === fechaIsoDia) {
+          if (estadoApp.filtroCalendario === "TODOS" || estadoApp.filtroCalendario === "FACTURA_FALTANTE" || estadoApp.filtroCalendario === "PENDIENTES") {
+            const divFactura = document.createElement("div");
+            divFactura.className = "calendar-event-item" ;
+            divFactura.style.backgroundColor = "#fff3cd";
+            divFactura.style.color = "#856404";
+            divFactura.style.borderLeft = "3px solid #ffc107";
+            divFactura.title = `PASO 1 OBLIGATORIO: Factura Global PPD pendiente para ${oc.folioOC} (${oc.proveedor})`;
+            divFactura.innerHTML = `🧾 <strong>${oc.folioOC}</strong>: Factura Global PPD`;
+            divFactura.onclick = () => abrirModalSubirFacturaGlobal(oc.folioOC);
+            cell.appendChild(divFactura);
+          }
+        }
+      }
+    });
+
     eventos.forEach(ev => {
+      const ocPadre = estadoApp.ordenes.find(o => o.folioOC === ev.folioOC);
+      const faltaFacturaGlobal = ocPadre && !ocPadre.facturaGlobalUrl;
+
       const divEv = document.createElement("div");
       let claseColor = "pendiente";
       let icono = "⏱";
@@ -463,15 +559,17 @@ function renderizarCalendario() {
           icono = "✓ Pagado";
         }
       } else {
-        // Checar si está vencido
+        // Checar si está vencido o si le falta la factura global madre
         if (ev.fechaProgramada < hoyStr) {
           claseColor = "rep-pendiente";
           icono = "⚠ Vencido";
+        } else if (faltaFacturaGlobal && ev.numParcialidad.includes(" 1 ")) {
+          icono = "🧾 Requiere Factura";
         }
       }
 
       divEv.className = `calendar-event-item ${claseColor}`;
-      divEv.title = `${ev.folioOC} (${ev.proveedor}) - $${Number(ev.montoProgramado).toLocaleString('es-MX', { minimumFractionDigits: 2 })}`;
+      divEv.title = `${ev.folioOC} (${ev.proveedor}) - $${Number(ev.montoProgramado).toLocaleString('es-MX', { minimumFractionDigits: 2 })}${faltaFacturaGlobal ? ' [Factura Global PPD Pendiente]' : ''}`;
       divEv.innerHTML = `${icono} <strong>${ev.folioOC}</strong>: $${Number(ev.montoProgramado).toLocaleString('es-MX', { maximumFractionDigits: 0 })}`;
       divEv.onclick = () => abrirModalAbonoParcialidad(ev.idParcialidad);
       cell.appendChild(divEv);
@@ -508,6 +606,7 @@ function renderizarKPIs() {
   let totalPagado = 0;
   let saldoPendiente = 0;
   let repsFaltantes = 0;
+  let facturasGlobalesFaltantes = 0;
   let proximos7Dias = 0;
 
   const hoy = new Date();
@@ -521,6 +620,9 @@ function renderizarKPIs() {
     totalMontoOC += (parseFloat(oc.montoTotal) || 0);
     totalPagado += (parseFloat(oc.totalAbonado) || 0);
     saldoPendiente += (parseFloat(oc.saldoPendiente) || 0);
+    if (!oc.facturaGlobalUrl) {
+      facturasGlobalesFaltantes++;
+    }
   });
 
   estadoApp.parcialidades.forEach(p => {
@@ -535,6 +637,7 @@ function renderizarKPIs() {
   if (document.getElementById("kpi-total-comprometido")) document.getElementById("kpi-total-comprometido").innerText = formatoMoneda(totalMontoOC);
   if (document.getElementById("kpi-total-pagado")) document.getElementById("kpi-total-pagado").innerText = formatoMoneda(totalPagado);
   if (document.getElementById("kpi-saldo-restante")) document.getElementById("kpi-saldo-restante").innerText = formatoMoneda(saldoPendiente);
+  if (document.getElementById("kpi-facturas-globales-faltantes")) document.getElementById("kpi-facturas-globales-faltantes").innerText = facturasGlobalesFaltantes;
   if (document.getElementById("kpi-reps-faltantes")) document.getElementById("kpi-reps-faltantes").innerText = repsFaltantes;
   if (document.getElementById("kpi-proximos-pagos")) document.getElementById("kpi-proximos-pagos").innerText = formatoMoneda(proximos7Dias);
 }
@@ -555,7 +658,9 @@ function renderizarTablaOrdenes() {
     // Documentos adjuntos rápidos
     let docsHtml = "";
     if (oc.facturaGlobalUrl) {
-      docsHtml += `<a href="${oc.facturaGlobalUrl}" target="_blank" class="badge bg-light text-primary border text-decoration-none me-1" title="Ver Factura Global">📄 Factura</a>`;
+      docsHtml += `<a href="${oc.facturaGlobalUrl}" target="_blank" class="badge bg-light text-primary border text-decoration-none me-1" title="Ver Factura Global PPD">📄 Factura Global</a>`;
+    } else {
+      docsHtml += `<button type="button" class="btn btn-xs btn-outline-warning py-0 px-1 border small text-dark fw-bold me-1" onclick="abrirModalSubirFacturaGlobal('${oc.folioOC}')" title="Subir Factura Global madre" style="font-size: 11px;">⚠️ + Factura PPD</button>`;
     }
     if (oc.contratoUrl) {
       docsHtml += `<a href="${oc.contratoUrl}" target="_blank" class="badge bg-light text-success border text-decoration-none me-1" title="Ver Contrato Firmado">📑 Contrato</a>`;
@@ -695,13 +800,43 @@ function actualizarAuditoriaReglasREP() {
   contAlertas.innerHTML = "";
 
   const hoy = new Date();
+
+  // 1. ALERTAS DE FACTURA GLOBAL PPD PENDIENTE (Paso previo indispensable antes del primer abono)
+  const ordenesSinFactura = estadoApp.ordenes.filter(o => !o.facturaGlobalUrl);
+  ordenesSinFactura.forEach(oc => {
+    const primeraParc = estadoApp.parcialidades.find(p => p.folioOC === oc.folioOC && p.numParcialidad.includes(" 1 "));
+    const fechaCompromiso = primeraParc ? primeraParc.fechaProgramada : "Próximamente";
+
+    const divAlertaFactura = document.createElement("div");
+    divAlertaFactura.className = "alert alert-warning mb-2 d-flex justify-content-between align-items-center py-2 px-3 border-warning";
+    divAlertaFactura.innerHTML = `
+      <div>
+        <span class="badge bg-warning text-dark me-2">🧾 PASO 1 REQUERIDO</span>
+        <strong>${oc.folioOC} - ${oc.proveedor}</strong>: Requiere <strong>Factura Global PPD</strong> antes del 1er pago (${fechaCompromiso}).
+        <div class="small text-muted mt-1">
+          El SAT exige emitir la Factura Global con Método PPD antes de emitir los Complementos de Pago (REP).
+        </div>
+      </div>
+      <div class="d-flex gap-2">
+        <button type="button" class="btn btn-sm btn-outline-dark bg-white" onclick="enviarRecordatorioFacturaGlobal('${oc.folioOC}')" title="Recordar al proveedor emitir la Factura Global PPD">
+          ✉️ Solicitar Factura Global
+        </button>
+        <button type="button" class="btn btn-sm btn-warning fw-semibold" onclick="abrirModalSubirFacturaGlobal('${oc.folioOC}')">
+          Subir Factura Global
+        </button>
+      </div>
+    `;
+    contAlertas.appendChild(divAlertaFactura);
+  });
+
+  // 2. ALERTAS DE REPs PENDIENTES
   const pendientes = estadoApp.parcialidades.filter(p => p.estatusPago === "PAGADO" && p.estatusREP === "PENDIENTE");
 
-  if (pendientes.length === 0) {
+  if (ordenesSinFactura.length === 0 && pendientes.length === 0) {
     contAlertas.innerHTML = `
       <div class="alert alert-success d-flex align-items-center gap-2 mb-0 py-2">
         <span>✓</span>
-        <div><strong>¡Excelente! No hay facturas de Complemento de Pago (REP) pendientes.</strong> Todas las parcialidades abonadas cuentan con su comprobante fiscal correspondiente.</div>
+        <div><strong>¡Excelente! Todo en regla fiscalmente.</strong> Todas las órdenes cuentan con su Factura Global y todas las parcialidades pagadas tienen su REP correspondiente.</div>
       </div>
     `;
     return;
@@ -719,11 +854,11 @@ function actualizarAuditoriaReglasREP() {
     divAlerta.className = `alert ${requiereAlerta ? 'alert-danger' : 'alert-warning'} mb-2 d-flex justify-content-between align-items-center py-2 px-3`;
     divAlerta.innerHTML = `
       <div>
+        <span class="badge ${requiereAlerta ? 'bg-danger text-white' : 'bg-warning text-dark'} me-2">
+          ${requiereAlerta ? '🚨 Alerta Activa: Recordatorio a Usuario cada 2 días / Proveedor cada 7 días' : '⏱ En periodo ordinario'}
+        </span>
         <strong>${p.folioOC} (${p.numParcialidad}) - ${p.proveedor}</strong>: Pagado el ${p.fechaPagoReal} (${diasTranscurridos} días transcurridos).
-        <div class="small mt-1">
-          <span class="badge ${requiereAlerta ? 'bg-danger text-white' : 'bg-warning text-dark'} me-2">
-            ${requiereAlerta ? '🚨 Alerta Activa: Recordatorio a Usuario cada 2 días / Proveedor cada 7 días' : '⏱ En periodo ordinario'}
-          </span>
+        <div class="small mt-1 text-muted">
           Último aviso a usuario: <strong>${p.ultimoRecordatorioUsuario || 'Pendiente'}</strong> | Proveedor: <strong>${p.ultimoRecordatorioProveedor || 'Pendiente'}</strong>
         </div>
       </div>
@@ -837,6 +972,27 @@ function abrirModalAbonoParcialidad(idParcialidad) {
   document.getElementById("modal-abono-monto").value = p.montoProgramado;
   document.getElementById("modal-abono-fecha").value = new Date().toISOString().split('T')[0];
 
+  // Verificar si la OC cuenta con Factura Global PPD
+  const oc = estadoApp.ordenes.find(o => o.folioOC === p.folioOC);
+  const alertaFacturaEl = document.getElementById("modal-abono-alerta-factura-global");
+  if (alertaFacturaEl) {
+    if (oc && !oc.facturaGlobalUrl) {
+      alertaFacturaEl.style.display = "block";
+      alertaFacturaEl.innerHTML = `
+        <div class="alert alert-warning py-2 px-3 small border-warning d-flex justify-content-between align-items-center">
+          <div>
+            <strong>⚠️ Recordatorio de Flujo:</strong> Esta orden aún no tiene <strong>Factura Global PPD</strong> cargada.
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-dark bg-white py-0 px-2 fw-semibold" onclick="abrirModalSubirFacturaGlobal('${p.folioOC}')">
+            + Subir Factura PPD
+          </button>
+        </div>
+      `;
+    } else {
+      alertaFacturaEl.style.display = "none";
+    }
+  }
+
   const modal = new bootstrap.Modal(document.getElementById("modalRegistrarAbono"));
   modal.show();
 }
@@ -945,6 +1101,94 @@ async function guardarREPDesdeModal(event) {
   bootstrap.Modal.getInstance(document.getElementById("modalSubirREP")).hide();
   alert(`✓ Complemento de Pago (REP) registrado para ${idParc}. La obligación fiscal ha quedado solventada.`);
 }
+
+// ---------------------------------------------------
+// MODAL: SUBIR FACTURA GLOBAL PPD
+// ---------------------------------------------------
+function abrirModalSubirFacturaGlobal(folioOC) {
+  const oc = estadoApp.ordenes.find(o => o.folioOC === folioOC);
+  const inputFolio = document.getElementById("modal-factura-global-folio-oc");
+  const elTitulo = document.getElementById("modal-factura-global-titulo-ref");
+
+  if (inputFolio) inputFolio.value = folioOC;
+  if (elTitulo) elTitulo.innerText = `${folioOC} - ${oc ? oc.proveedor : ''}`;
+
+  const modal = new bootstrap.Modal(document.getElementById("modalSubirFacturaGlobal"));
+  modal.show();
+}
+
+async function guardarFacturaGlobalDesdeModal(event) {
+  event.preventDefault();
+  const folioOC = document.getElementById("modal-factura-global-folio-oc").value;
+  const fileInput = document.getElementById("modal-factura-global-file");
+  const btn = document.getElementById("btn-submit-modal-factura");
+
+  if (!fileInput || !fileInput.files[0]) {
+    alert("Por favor selecciona el archivo de la Factura Global.");
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerText = "Subiendo Factura Global a Drive...";
+
+  try {
+    const fileData = await archivoABase64(fileInput.files[0]);
+    const res = await enviarPeticionAppsScript({
+      accion: "agregarArchivosAOrden",
+      folioOC: folioOC,
+      tipoArchivo: "FACTURA",
+      archivoFile: fileData
+    });
+
+    const oc = estadoApp.ordenes.find(o => o.folioOC === folioOC);
+    if (oc) {
+      if (res && res.urlArchivo) oc.facturaGlobalUrl = res.urlArchivo;
+      if (res && res.carpetaDriveUrl && !oc.carpetaDriveUrl) oc.carpetaDriveUrl = res.carpetaDriveUrl;
+      guardarEnLocalStorage();
+      actualizarVistaCompleta();
+    }
+
+    bootstrap.Modal.getInstance(document.getElementById("modalSubirFacturaGlobal")).hide();
+    alert(`✅ ¡Factura Global PPD guardada exitosamente para la orden ${folioOC}!\n\nEl Paso 1 ha sido solventado.`);
+  } catch (err) {
+    console.error("Error al subir Factura Global:", err);
+    alert("Hubo un error al subir la factura a Google Drive.");
+  } finally {
+    btn.disabled = false;
+    btn.innerText = "Subir Factura Global a Drive";
+  }
+}
+
+async function enviarRecordatorioFacturaGlobal(folioOC) {
+  const oc = estadoApp.ordenes.find(o => o.folioOC === folioOC);
+  if (!oc) {
+    alert("No se encontró la orden de compra.");
+    return;
+  }
+
+  const correoProv = oc.correoProveedor || "proveedor@empresa.com";
+  if (!confirm(`¿Deseas enviar el recordatorio para emisión urgente de FACTURA GLOBAL (PPD) para la orden ${folioOC}?\n\n- Proveedor: ${oc.proveedor} (${correoProv})\n- Monto Comprometido: ${formatoMoneda(oc.montoTotal)}\n- Notificación con copia a: yazminperes@gmail.com`)) {
+    return;
+  }
+
+  try {
+    const params = new URLSearchParams({
+      accion: "enviarRecordatorioFacturaGlobal",
+      folioOC: oc.folioOC,
+      proveedor: oc.proveedor,
+      correoProveedor: correoProv,
+      montoTotal: oc.montoTotal,
+      t: Date.now()
+    });
+
+    await fetch(`${SCRIPT_URL_PARCIALIDADES}?${params.toString()}`, { mode: "no-cors" });
+    alert(`✉️ ¡Recordatorio de Factura Global enviado con éxito!\n\nSe solicitó formalmente al proveedor ${oc.proveedor} la emisión de la Factura Global con Método PPD.`);
+  } catch (err) {
+    console.warn("Aviso enviando recordatorio factura global:", err);
+    alert("Recordatorio transmitido al servidor de Apps Script.");
+  }
+}
+
 
 // ==========================================
 // PERSISTENCIA LOCAL Y CONSULTA REMOTA (SHEETS COMO FUENTE DE VERDAD)

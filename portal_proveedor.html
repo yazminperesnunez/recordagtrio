@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portal de Proveedores - Consulta de Pagos y Entrega de Facturas / REP</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .portal-hero {
+      background: linear-gradient(135deg, #0054a6 0%, #002b59 100%);
+      color: white;
+      border-radius: 12px;
+      padding: 2.5rem 2rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 10px 25px rgba(0, 84, 166, 0.15);
+    }
+    .badge-step {
+      font-size: 0.8rem;
+      padding: 0.35rem 0.65rem;
+      border-radius: 20px;
+    }
+    .card-oc-portal {
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      transition: all 0.2s ease-in-out;
+    }
+    .card-oc-portal:hover {
+      border-color: #0054a6;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    }
+  </style>
+</head>
+<body class="bg-light">
+
+  <!-- Navbar -->
+  <header class="navbar-custom py-3 px-4 d-flex justify-content-between align-items-center bg-white border-bottom shadow-sm">
+    <div class="d-flex align-items-center gap-3">
+      <div class="bg-primary text-white p-2 rounded-3 d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+      </div>
+      <div>
+        <h5 class="m-0 fw-bold text-dark">Portal de Proveedores</h5>
+        <small class="text-secondary" id="navbar-subtitulo">Acceso Privado a Pagos y Entrega de Facturas / REP</small>
+      </div>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <div id="nav-info-sesion" class="d-none align-items-center gap-2">
+        <span class="badge bg-success-subtle text-success border border-success px-3 py-2 fw-semibold" id="nav-badge-proveedor">
+          👤 Sesión Activa
+        </span>
+        <button type="button" class="btn btn-sm btn-outline-primary" onclick="cargarDatosPortal(true)">
+          🔄 Actualizar
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-danger" onclick="cerrarSesionProveedor()">
+          🚪 Salir
+        </button>
+      </div>
+      <a href="index.html" class="btn btn-sm btn-outline-secondary">
+        ← Panel Interno
+      </a>
+    </div>
+  </header>
+
+  <div class="container py-4">
+
+    <!-- SECCIÓN 1: PANTALLA DE LOGIN (Visible sólo si no ha iniciado sesión) -->
+    <div id="seccion-login" class="row justify-content-center py-5">
+      <div class="col-md-5 col-lg-4">
+        <div class="card border-0 shadow-lg rounded-4 overflow-hidden">
+          <div class="bg-primary text-white text-center p-4">
+            <div class="bg-white text-primary rounded-circle d-inline-flex p-3 mb-2 shadow-sm">
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+            </div>
+            <h4 class="fw-bold m-0">Acceso a Proveedores</h4>
+            <p class="small text-white-50 m-0 mt-1">Ingresa con tus credenciales fiscales</p>
+          </div>
+          <div class="card-body p-4 bg-white">
+            <div id="login-error-alerta" class="alert alert-danger py-2 small d-none" role="alert"></div>
+            
+            <form id="form-login-proveedor" onsubmit="iniciarSesionProveedor(event)">
+              <div class="mb-3">
+                <label class="form-label small fw-bold text-muted text-uppercase">Usuario (RFC) *</label>
+                <input type="text" id="login-rfc" class="form-control text-uppercase font-monospace fw-bold" placeholder="Ej. SHT2011154K1" required autocomplete="username">
+                <div class="form-text small" style="font-size: 11px;">Escribe el RFC registrado en tus órdenes de compra.</div>
+              </div>
+              <div class="mb-4">
+                <label class="form-label small fw-bold text-muted text-uppercase">Contraseña *</label>
+                <input type="password" id="login-password" class="form-control" placeholder="••••••••" required autocomplete="current-password">
+                <div class="form-text small" style="font-size: 11px;">Clave asignada: <code>admin</code></div>
+              </div>
+              <button type="submit" id="btn-login-submit" class="btn btn-primary w-100 py-2 fw-semibold shadow-sm">
+                Iniciar Sesión Segura →
+              </button>
+            </form>
+          </div>
+          <div class="card-footer bg-light text-center py-3 border-top-0">
+            <small class="text-muted" style="font-size: 11px;">
+              🔒 Acceso cifrado y exclusivo para tus facturas y órdenes de compra.
+            </small>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECCIÓN 2: DASHBOARD PRIVADO DEL PROVEEDOR (Oculto hasta iniciar sesión) -->
+    <div id="seccion-dashboard-proveedor" style="display: none;">
+      
+      <!-- Hero / Bienvenida Exclusiva -->
+      <div class="portal-hero">
+        <div class="row align-items-center">
+          <div class="col-lg-8">
+            <span class="badge bg-warning text-dark fw-bold mb-2">Cuenta Privada</span>
+            <h2 class="fw-bold mb-2" id="portal-hero-nombre-proveedor">Bienvenido</h2>
+            <p class="mb-0 text-white-50">
+              RFC: <strong class="text-white font-monospace" id="portal-hero-rfc">---</strong> | Consulta tus transferencias bancarias efectuadas, descarga comprobantes y carga tu <strong>Factura Global PPD</strong> o los <strong>Complementos de Pago (REP)</strong>.
+            </p>
+          </div>
+          <div class="col-lg-4 mt-3 mt-lg-0 text-lg-end">
+            <div class="bg-white bg-opacity-10 p-3 rounded-3 border border-white border-opacity-25 text-white text-lg-end text-start">
+              <span class="small text-white-50 d-block">Estado de Cuenta:</span>
+              <strong class="fs-6 text-success bg-white px-2 py-1 rounded-2 d-inline-block mt-1">● Conectado y Sincronizado</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Resumen de Métricas Exclusivas del Proveedor -->
+      <div class="row g-3 mb-4">
+        <div class="col-md-3 col-6">
+          <div class="card p-3 border-0 shadow-sm">
+            <span class="text-muted small fw-semibold text-uppercase">Total Contratado</span>
+            <h4 class="fw-bold text-dark mt-1 font-monospace" id="portal-kpi-total">$0.00</h4>
+          </div>
+        </div>
+        <div class="col-md-3 col-6">
+          <div class="card p-3 border-0 shadow-sm border-start border-success border-4">
+            <span class="text-muted small fw-semibold text-uppercase">Depositado a tu Cuenta</span>
+            <h4 class="fw-bold text-success mt-1 font-monospace" id="portal-kpi-pagado">$0.00</h4>
+          </div>
+        </div>
+        <div class="col-md-3 col-6">
+          <div class="card p-3 border-0 shadow-sm border-start border-danger border-4">
+            <span class="text-muted small fw-semibold text-uppercase">Saldo por Cobrar</span>
+            <h4 class="fw-bold text-danger mt-1 font-monospace" id="portal-kpi-saldo">$0.00</h4>
+          </div>
+        </div>
+        <div class="col-md-3 col-6">
+          <div class="card p-3 border-0 shadow-sm border-start border-warning border-4">
+            <span class="text-muted small fw-semibold text-uppercase">Facturas / REPs Pendientes</span>
+            <h4 class="fw-bold text-warning mt-1 font-monospace" id="portal-kpi-pendientes">0</h4>
+            <small class="text-muted" style="font-size: 11px;">Documentos fiscales requeridos</small>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lista de Órdenes de Compra del Proveedor -->
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-bold m-0 text-dark">Tus Órdenes de Compra</h5>
+        <span class="badge bg-light text-secondary border" id="portal-conteo-ordenes">0 Órdenes</span>
+      </div>
+
+      <div id="portal-lista-ordenes" class="row g-4 mb-5">
+        <!-- Se llena dinámicamente con las OCs del proveedor autenticado -->
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- MODAL: SUBIR FACTURA GLOBAL (PPD) -->
+  <div class="modal fade" id="modalPortalFacturaGlobal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header bg-warning-subtle">
+          <h5 class="modal-title fw-bold text-dark">🧾 Cargar Factura Global (Método PPD)</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <form onsubmit="portalGuardarFacturaGlobal(event)">
+          <div class="modal-body">
+            <input type="hidden" id="portal-factura-folio-oc">
+            <div class="bg-light p-3 rounded mb-3 border">
+              <span class="text-muted small d-block">Subiendo Factura para la Orden:</span>
+              <strong class="text-primary font-monospace fs-6" id="portal-factura-titulo-ref"></strong>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Archivo PDF o XML de la Factura Global *</label>
+              <input type="file" id="portal-factura-file" class="form-control" accept=".xml,.pdf" required>
+              <div class="form-text small" style="font-size: 11px;">
+                Asegúrate de que el CFDI cuente con <strong>Método de Pago PPD</strong> (Pago en parcialidades o diferido).
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" id="btn-submit-portal-factura" class="btn btn-warning btn-sm px-3 fw-semibold">
+              ☁️ Subir y Validar Factura
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: SUBIR COMPLEMENTO DE RECEPCIÓN DE PAGOS (REP) -->
+  <div class="modal fade" id="modalPortalSubirREP" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title fw-bold">📤 Cargar Complemento de Pago (REP)</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <form onsubmit="portalGuardarREP(event)">
+          <div class="modal-body">
+            <input type="hidden" id="portal-rep-id-parc">
+            <div class="bg-light p-3 rounded mb-3 border">
+              <span class="text-muted small d-block">Complemento fiscal correspondiente a:</span>
+              <strong class="text-primary font-monospace fs-6" id="portal-rep-titulo-ref"></strong>
+              <div class="small text-muted mt-1" id="portal-rep-subtitulo-ref"></div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Archivo XML o PDF del REP timbrado *</label>
+              <input type="file" id="portal-rep-file" class="form-control" accept=".xml,.pdf" required>
+              <div class="form-text small" style="font-size: 11px;">
+                Al subirlo quedará registrado en la carpeta compartida y el usuario verá la actualización de inmediato.
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" id="btn-submit-portal-rep" class="btn btn-primary btn-sm px-3 fw-semibold">
+              ☁️ Subir Complemento REP
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="portal_proveedor.js"></script>
+</body>
+</html>

@@ -22,6 +22,9 @@
       </div>
     </div>
     <div class="d-flex align-items-center gap-2">
+      <a href="portal_proveedor.html" target="_blank" class="btn btn-sm btn-outline-success fw-semibold" title="Abrir vista pública / autoservicio para proveedores">
+        🌐 Portal de Proveedores ↗
+      </a>
       <button type="button" class="btn btn-sm btn-outline-primary fw-semibold" id="btn-sincronizar-sheets" onclick="limpiarCacheYRecargar()" title="Forzar lectura en vivo de la hoja de Google Sheets">
         🔄 Sincronizar con Google Sheets
       </button>
@@ -57,7 +60,7 @@
           </div>
         </div>
       </div>
-      <div class="col-xl-2 col-md-6">
+      <div class="col-xl-2 col-md-4">
         <div class="card card-kpi p-3 h-100">
           <div class="d-flex justify-content-between align-items-center">
             <div>
@@ -68,7 +71,19 @@
           </div>
         </div>
       </div>
-      <div class="col-xl-2 col-md-6">
+      <div class="col-xl-2 col-md-4">
+        <div class="card card-kpi p-3 h-100 border-warning">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <span class="text-warning-emphasis small fw-bold text-uppercase">Factura Global PPD</span>
+              <h3 class="m-0 fw-bold mt-1 font-monospace text-warning-emphasis" id="kpi-facturas-globales-faltantes">0</h3>
+            </div>
+            <div class="kpi-icon bg-warning-subtle text-warning">🧾</div>
+          </div>
+          <small class="text-muted" style="font-size: 11px;">Paso 1: Antes del primer pago</small>
+        </div>
+      </div>
+      <div class="col-xl-2 col-md-4">
         <div class="card card-kpi p-3 h-100 border-danger">
           <div class="d-flex justify-content-between align-items-center">
             <div>
@@ -80,28 +95,17 @@
           <small class="text-danger" style="font-size: 11px;">Alerta activa: 2 días / 7 días</small>
         </div>
       </div>
-      <div class="col-xl-2 col-md-6">
-        <div class="card card-kpi p-3 h-100">
-          <div class="d-flex justify-content-between align-items-center">
-            <div>
-              <span class="text-muted small fw-semibold text-uppercase">Próximos 7 Días</span>
-              <h4 class="m-0 fw-bold mt-1 font-monospace text-warning" id="kpi-proximos-pagos">$0.00</h4>
-            </div>
-            <div class="kpi-icon bg-warning-subtle text-warning">📅</div>
-          </div>
-        </div>
-      </div>
     </div>
 
-    <!-- SECCIÓN DE ALERTA INTELIGENTE Y REGLAS DE RECORDATORIO REP -->
+    <!-- SECCIÓN DE ALERTA INTELIGENTE Y REGLAS DE RECORDATORIO (FACTURA GLOBAL + REPs) -->
     <div class="card mb-4 border-warning shadow-sm">
       <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
         <div class="d-flex align-items-center gap-2">
-          <span class="badge bg-danger text-white">Regla Automatizada</span>
-          <strong class="text-dark small">Fiscalización de Facturas Complementarias (REP) tras el pago:</strong>
-          <span class="text-muted small">Recordatorio al <strong>usuario cada 2 días</strong> | Recordatorio al <strong>proveedor cada 7 días (semanal)</strong></span>
+          <span class="badge bg-danger text-white">Flujo de Fiscalización</span>
+          <strong class="text-dark small">Recordatorios y Requisitos del Proceso de Parcialidades:</strong>
+          <span class="text-muted small">1) <strong>Factura Global PPD</strong> requerida antes del 1er pago | 2) <strong>REP</strong> post-pago (Avisos cada 2 y 7 días)</span>
         </div>
-        <span class="cron-badge">Trigger Automático Activo</span>
+        <span class="cron-badge">Auditoría en Tiempo Real</span>
       </div>
       <div class="card-body py-2 px-3" id="contenedor-alertas-auditoria-rep">
         <!-- Se llena dinámicamente -->
@@ -343,8 +347,9 @@
               <div class="d-flex gap-2">
                 <button type="button" class="btn btn-sm btn-outline-primary active" onclick="filtrarCalendario('TODOS')">Todos</button>
                 <button type="button" class="btn btn-sm btn-outline-warning" onclick="filtrarCalendario('PENDIENTES')">⏱ Por Pagar</button>
-                <button type="button" class="btn btn-sm btn-outline-success" onclick="filtrarCalendario('PAGADOS')">✓ Pagados</button>
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="filtrarCalendario('FACTURA_FALTANTE')">🧾 Sin Factura Global</button>
                 <button type="button" class="btn btn-sm btn-outline-danger" onclick="filtrarCalendario('REP_ALERTA')">🚨 REP Pendiente</button>
+                <button type="button" class="btn btn-sm btn-outline-success" onclick="filtrarCalendario('PAGADOS')">✓ Pagados</button>
               </div>
               <small class="text-muted">Haz clic en cualquier evento para registrar abono o subir REP</small>
             </div>
@@ -447,6 +452,7 @@
               <span class="text-muted small d-block">Parcialidad seleccionada:</span>
               <strong class="text-primary font-monospace fs-6" id="modal-abono-titulo-ref"></strong>
             </div>
+            <div id="modal-abono-alerta-factura-global" style="display: none;" class="mb-3"></div>
             <div class="mb-3">
               <label class="form-label small fw-semibold">Monto Pagado (MXN) *</label>
               <input type="number" id="modal-abono-monto" class="form-control font-monospace fw-bold" required step="0.01">
@@ -504,8 +510,40 @@
     </div>
   </div>
 
+  <!-- MODAL: SUBIR FACTURA GLOBAL (PPD) -->
+  <div class="modal fade" id="modalSubirFacturaGlobal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header bg-warning-subtle">
+          <h5 class="modal-title fw-bold text-dark">🧾 Adjuntar Factura Global PPD</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <form onsubmit="guardarFacturaGlobalDesdeModal(event)">
+          <div class="modal-body">
+            <input type="hidden" id="modal-factura-global-folio-oc">
+            <div class="bg-light p-3 rounded mb-3 border">
+              <span class="text-muted small d-block">Asignando Factura Global / PPD a:</span>
+              <strong class="text-primary font-monospace fs-6" id="modal-factura-global-titulo-ref"></strong>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Archivo PDF o XML de la Factura Global *</label>
+              <input type="file" id="modal-factura-global-file" class="form-control" accept=".xml,.pdf" required>
+            </div>
+            <div class="alert alert-warning small py-2 mb-0">
+              💡 <strong>Regla Fiscal:</strong> La Factura Global (Método PPD - Pago en Parcialidades o Diferido) es el comprobante madre indispensable antes de emitir los Recibos Electrónicos de Pago (REP).
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" id="btn-submit-modal-factura" class="btn btn-warning btn-sm px-3 fw-semibold">Subir Factura Global a Drive</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="app.js?v=20260918_1"></script>
+  <script src="app.js?v=20260918_factura_global"></script>
 </body>
 </html>

@@ -22,7 +22,13 @@ Este proyecto derivado está diseñado específicamente para **administrar pagos
      - **Requerimiento al Proveedor:** Cada **semana (7 días)**.
    - Botón de **"Ejecutar Auditoría y Envío de Recordatorios"** en la barra superior para detonar el motor de notificaciones en cualquier momento.
 
-4. **Operación Dual:**
+4. **Portal de Autoservicio para Proveedores (`portal_proveedor.html`):**
+   - Vista web dedicada y amigable para los proveedores con filtro automático o manual por razón social/RFC.
+   - Consulta transparente de fechas programadas, montos, estatus de pago y botón para **descargar la ficha/comprobante bancario**.
+   - Carga directa por parte del proveedor de la **Factura Global (PPD)** y de los **Complementos de Pago (REP)**.
+   - **Sincronización Bidireccional Total:** Si el usuario sube la factura o comprobante desde el panel interno (o por fuera), el proveedor lo ve reflejado de inmediato en su portal; y si el proveedor sube su factura o REP por el portal, el usuario y la hoja de cálculo se actualizan al instante.
+
+5. **Operación Dual:**
    - Funciona de inmediato de forma local (`localStorage`) para pruebas y uso ágil en el navegador.
    - Opcionalmente se conecta a **Google Sheets y Google Drive** desplegando el archivo `backend.gs`.
 
@@ -53,6 +59,7 @@ Si deseas sincronizar todo con una hoja de cálculo y guardar los comprobantes e
 
 ---
 
-## 💻 Uso Local Rápido
+## 💻 Uso de las Vistas
 
-Simplemente abre el archivo [`index.html`](file:///c:/Users/yazmi/Documents/nousarsgroup/version_parcialidades/index.html) en tu navegador preferido (doble clic o mediante cualquier servidor local como Live Server).
+- **Panel Interno de Compras:** Abre [`index.html`](file:///c:/Users/yazmi/Documents/nousarsgroup/version_parcialidades/index.html) en tu navegador para administrar órdenes, autorizar pagos y monitorear el calendario general.
+- **Portal de Proveedores:** Abre [`portal_proveedor.html`](file:///c:/Users/yazmi/Documents/nousarsgroup/version_parcialidades/portal_proveedor.html) para compartir el enlace directo a tus proveedores.
