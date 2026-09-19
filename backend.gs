@@ -10,6 +10,9 @@
  * 4. Activador Automático (Trigger Cron diario) para auditar vencimientos.
  */
 
+// Correo de la empresa / usuario para recibir alertas de pagos y facturas REP pendientes
+const EMAIL_NOTIFICACIONES_ADMIN = "yazminperes@gmail.com";
+
 function getSpreadsheet() {
   try {
     return SpreadsheetApp.getActiveSpreadsheet();
@@ -52,6 +55,10 @@ function doPost(e) {
       return respuestaJSON(ejecutarAuditoriaYEnvioRecordatoriosAutomaticos());
     }
 
+    if (accion === "simularPruebaVencimiento") {
+      return respuestaJSON(simularPruebaVencimientoYEnviarCorreo(data));
+    }
+
     return respuestaJSON({ success: false, error: "Acción no reconocida: " + accion }, 400);
   } catch (error) {
     return respuestaJSON({ success: false, error: error.toString() }, 500);
@@ -65,6 +72,12 @@ function doGet(e) {
   }
   if (accion === "cronRecordatorios") {
     return respuestaJSON(ejecutarAuditoriaYEnvioRecordatoriosAutomaticos());
+  }
+  if (accion === "simularVencimiento") {
+    return respuestaJSON(simularPruebaVencimientoYEnviarCorreo({
+      correoDestino: e.parameter.correo || EMAIL_NOTIFICACIONES_ADMIN,
+      idParcialidad: e.parameter.idParcialidad || ""
+    }));
   }
   return respuestaJSON({ success: true, message: "API Parcialidades y Control REP Activa" });
 }
@@ -327,16 +340,43 @@ function ejecutarAuditoriaYEnvioRecordatoriosAutomaticos() {
     const provNombre = row[13] || "Proveedor";
     const provCorreo = row[14] || "";
 
-    // Solo auditar si está pagado y el REP sigue PENDIENTE
+    // CASO A: Pago programado cuya FECHA PACTADA YA VENCIÓ y aún no se paga
+    if (estatusPago === "PROGRAMADO") {
+      const fechaProgramadaStr = row[3];
+      if (fechaProgramadaStr) {
+        const fechaProg = new Date(fechaProgramadaStr);
+        if (hoy > fechaProg) {
+          const diasVencido = Math.floor((hoy - fechaProg) / (1000 * 60 * 60 * 24));
+          let debeAvisarUsuarioPago = false;
+          if (!ultimoRecUserStr) {
+            debeAvisarUsuarioPago = true;
+          } else {
+            const ultUser = new Date(ultimoRecUserStr);
+            const diasDesdeUlt = Math.floor((hoy - ultUser) / (1000 * 60 * 60 * 24));
+            if (diasDesdeUlt >= 2) debeAvisarUsuarioPago = true;
+          }
+
+          if (debeAvisarUsuarioPago) {
+            enviarCorreoAlertaPagoVencidoUsuario(idParc, folioOC, provNombre, row[4], fechaProgramadaStr, diasVencido);
+            sheetParc.getRange(i + 1, 12).setValue(hoy.toISOString().split('T')[0]);
+            recordatoriosEnviadosUsuario++;
+            logDetalle.push({
+              idParcialidad: idParc,
+              tipo: "PAGO_VENCIDO",
+              diasVencido: diasVencido,
+              notificoUsuario: true
+            });
+          }
+        }
+      }
+    }
+
+    // CASO B: Ya se pagó pero el REP sigue PENDIENTE y venció el plazo
     if (estatusPago === "PAGADO" && estatusREP === "PENDIENTE" && fechaPagoRealStr) {
       const fechaPago = new Date(fechaPagoRealStr);
       
-      // Regla: "Al siguiente mes casi terminado"
-      // En México el plazo legal del SAT para el REP es hasta el 5to día natural del mes siguiente.
-      // Si ya pasó el fin de mes del pago o transcurrieron más de 20 días desde el pago:
+      // Regla: "Al siguiente mes casi terminado" o más de 20 días sin REP
       const diasDesdePago = Math.floor((hoy - fechaPago) / (1000 * 60 * 60 * 24));
-      
-      // Condición de vencimiento: más de 20 días o mes siguiente iniciado
       const esMesSiguiente = (hoy.getFullYear() > fechaPago.getFullYear()) || (hoy.getMonth() > fechaPago.getMonth());
       const estaEnAlertaREP = esMesSiguiente || (diasDesdePago >= 20);
 
@@ -376,6 +416,7 @@ function ejecutarAuditoriaYEnvioRecordatoriosAutomaticos() {
 
         logDetalle.push({
           idParcialidad: idParc,
+          tipo: "REP_PENDIENTE",
           folioOC: folioOC,
           proveedor: provNombre,
           diasDesdePago: diasDesdePago,
@@ -398,7 +439,7 @@ function ejecutarAuditoriaYEnvioRecordatoriosAutomaticos() {
 // 6. FUNCIONES DE CORREO (PLANTILLAS EJECUTIVAS)
 // ---------------------------------------------------
 function enviarCorreoAlertaUsuario(idParc, folioOC, proveedor, monto, fechaPago, dias) {
-  const correoAdmin = Session.getActiveUser().getEmail() || "admin@empresa.com";
+  const correoAdmin = EMAIL_NOTIFICACIONES_ADMIN || Session.getActiveUser().getEmail() || "admin@empresa.com";
   const asunto = `🚨 [URGENTE CADA 2 DÍAS] Complemento de Pago (REP) Pendiente: ${folioOC} - ${proveedor}`;
   const cuerpoHtml = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
@@ -416,11 +457,125 @@ function enviarCorreoAlertaUsuario(idParc, folioOC, proveedor, monto, fechaPago,
           <tr><td style="padding: 8px; border-bottom: 1px solid #cbd5e1;"><strong>Fecha de Transferencia:</strong></td><td style="padding: 8px; border-bottom: 1px solid #cbd5e1;">${fechaPago}</td></tr>
           <tr><td style="padding: 8px;"><strong>Días Transcurridos:</strong></td><td style="padding: 8px; color: #d63939; font-weight: bold;">${dias} días sin REP</td></tr>
         </table>
-        <p style="font-size: 13px; color: #64748b;">(Esta alerta se emitirá <strong>cada 2 días</strong> hasta que el proveedor adjunte el XML/PDF del REP en el sistema).</p>
+        <p style="font-size: 13px; color: #64748b;">(Esta alerta se emite <strong>cada 2 días</strong> hasta que el proveedor adjunte el XML/PDF del REP en el sistema).</p>
       </div>
     </div>
   `;
   enviarEmailUniversal(correoAdmin, asunto, cuerpoHtml);
+}
+
+function enviarCorreoAlertaPagoVencidoUsuario(idParc, folioOC, proveedor, monto, fechaProgramada, diasVencido) {
+  const correoAdmin = EMAIL_NOTIFICACIONES_ADMIN || Session.getActiveUser().getEmail() || "admin@empresa.com";
+  const asunto = `⚠️ [ALERTA DE PAGO VENCIDO] Se pasó la fecha pactada de transferencia: ${folioOC}`;
+  const cuerpoHtml = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+      <div style="background-color: #d97706; color: white; padding: 18px 24px;">
+        <h3 style="margin: 0; font-size: 18px;">Notificación: Parcialidad con Fecha Vencida</h3>
+      </div>
+      <div style="padding: 24px; color: #334155; line-height: 1.6;">
+        <p>Hola,</p>
+        <p>Te recordamos que la siguiente parcialidad de pago programada <strong>ya superó su fecha pactada de pago</strong> y aún no se ha registrado la transferencia:</p>
+        <table style="width: 100%; border-collapse: collapse; margin: 18px 0; background: #fffbeb;">
+          <tr><td style="padding: 8px; border-bottom: 1px solid #fde68a;"><strong>Orden de Compra:</strong></td><td style="padding: 8px; border-bottom: 1px solid #fde68a;">${folioOC}</td></tr>
+          <tr><td style="padding: 8px; border-bottom: 1px solid #fde68a;"><strong>Parcialidad:</strong></td><td style="padding: 8px; border-bottom: 1px solid #fde68a;">${idParc}</td></tr>
+          <tr><td style="padding: 8px; border-bottom: 1px solid #fde68a;"><strong>Proveedor:</strong></td><td style="padding: 8px; border-bottom: 1px solid #fde68a;">${proveedor}</td></tr>
+          <tr><td style="padding: 8px; border-bottom: 1px solid #fde68a;"><strong>Monto a Transferir:</strong></td><td style="padding: 8px; border-bottom: 1px solid #fde68a;">$${Number(monto).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN</td></tr>
+          <tr><td style="padding: 8px; border-bottom: 1px solid #fde68a;"><strong>Fecha Límite Pactada:</strong></td><td style="padding: 8px; border-bottom: 1px solid #fde68a;">${fechaProgramada}</td></tr>
+          <tr><td style="padding: 8px;"><strong>Días de Retraso:</strong></td><td style="padding: 8px; color: #b45309; font-weight: bold;">${diasVencido} días vencida</td></tr>
+        </table>
+        <p>Por favor ingresa al sistema para registrar el comprobante de transferencia bancaria una vez realizada.</p>
+      </div>
+    </div>
+  `;
+  enviarEmailUniversal(correoAdmin, asunto, cuerpoHtml);
+}
+
+function enviarRecordatorioEspecifico(data) {
+  const ss = getSpreadsheet();
+  const sheetParc = ss.getSheetByName("Calendario_Pagos");
+  const dataParc = sheetParc.getDataRange().getValues();
+  const idParc = data.idParcialidad;
+
+  let fila = -1;
+  let row = null;
+  for (let i = 1; i < dataParc.length; i++) {
+    if (dataParc[i][0] === idParc) {
+      fila = i + 1;
+      row = dataParc[i];
+      break;
+    }
+  }
+
+  if (!row) throw new Error("Parcialidad no encontrada: " + idParc);
+
+  const folioOC = row[1];
+  const numParc = row[2];
+  const fechaPago = row[5] || new Date().toISOString().split('T')[0];
+  const monto = row[6] || row[4];
+  const proveedor = row[13] || "Proveedor";
+  const correoProv = row[14] || "";
+
+  enviarCorreoAlertaUsuario(idParc, folioOC, proveedor, monto, fechaPago, 25);
+  if (correoProv) {
+    enviarCorreoRequerimientoProveedor(correoProv, proveedor, folioOC, numParc, monto, fechaPago);
+  }
+
+  const hoyStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || "GMT-6", "yyyy-MM-dd");
+  sheetParc.getRange(fila, 12).setValue(hoyStr);
+  sheetParc.getRange(fila, 13).setValue(hoyStr);
+
+  return { success: true, message: "Recordatorios enviados exitosamente" };
+}
+
+function simularPruebaVencimientoYEnviarCorreo(data) {
+  const ss = getSpreadsheet();
+  const sheetParc = ss.getSheetByName("Calendario_Pagos");
+  const dataParc = sheetParc.getDataRange().getValues();
+
+  // Buscar una parcialidad o tomar la primera
+  let row = null;
+  let fila = 2;
+  if (data && data.idParcialidad) {
+    for (let i = 1; i < dataParc.length; i++) {
+      if (dataParc[i][0] === data.idParcialidad) {
+        row = dataParc[i];
+        fila = i + 1;
+        break;
+      }
+    }
+  }
+
+  if (!row && dataParc.length > 1) {
+    row = dataParc[1];
+    fila = 2;
+  }
+
+  if (!row) {
+    // Si no hay filas aún, generar simulación virtual
+    const correoAdmin = data.correoDestino || EMAIL_NOTIFICACIONES_ADMIN;
+    enviarCorreoAlertaPagoVencidoUsuario("OC-2026-TEST-P1", "OC-2026-TEST", "PROVEEDOR INDUSTRIAL S.A. DE C.V.", 15000, "2026-08-01", 45);
+    enviarCorreoAlertaUsuario("OC-2026-TEST-P1", "OC-2026-TEST", "PROVEEDOR INDUSTRIAL S.A. DE C.V.", 15000, "2026-08-05", 40);
+    return { success: true, mensaje: "Simulación ejecutada y correos enviados a " + correoAdmin };
+  }
+
+  const idParc = row[0];
+  const folioOC = row[1];
+  const monto = row[4];
+  const proveedor = row[13] || "Proveedor";
+  const correoDestino = data.correoDestino || EMAIL_NOTIFICACIONES_ADMIN;
+
+  // Enviar alerta de pago vencido
+  enviarCorreoAlertaPagoVencidoUsuario(idParc, folioOC, proveedor, monto, "2026-08-01", 48);
+  
+  // Enviar alerta de REP pendiente
+  enviarCorreoAlertaUsuario(idParc, folioOC, proveedor, monto, "2026-08-05", 44);
+
+  return {
+    success: true,
+    idParcialidad: idParc,
+    correoEnviadoA: correoDestino,
+    mensaje: "Simulación completada. Se enviaron las alertas de pago vencido y REP faltante al correo: " + correoDestino
+  };
 }
 
 function enviarCorreoRequerimientoProveedor(correoProv, provNombre, folioOC, numParc, monto, fechaPago) {

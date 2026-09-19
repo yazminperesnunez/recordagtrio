@@ -1,7 +1,7 @@
 // app.js - Lógica FrontEnd para Gestión de OC en Parcialidades, Calendario y Control de Facturas/REP
 // Se conecta a Google Apps Script y dispone de fallback reactivo local e interactivo.
 
-const SCRIPT_URL_PARCIALIDADES = "https://script.google.com/macros/s/AKfycbxZfSU6IAqXtfEXLXx4kpBo8HthK-5myxDBABuIkZZjvyiSjn74AJI_ASDUP91h5-Wi/exec";
+const SCRIPT_URL_PARCIALIDADES = "https://script.google.com/macros/s/AKfycbwPtrIZhNw8nJOL_YEy1dEef5xM7pyw34qAntNbdBTWNj4-bxjpfW0tPK9R3iIytPVy/exec";
 
 // Estado en memoria
 let estadoApp = {
@@ -555,6 +555,40 @@ async function dispararAuditoriaManual() {
     if (btn) {
       btn.disabled = false;
       btn.innerText = "⚡ Ejecutar Auditoría de Recordatorios REP";
+    }
+  }
+}
+
+async function simularVencimientoYProbarCorreo() {
+  const btn = document.getElementById("btn-simular-vencido");
+  const correoDefault = "yazminperes@gmail.com";
+
+  const correoDestino = prompt("Ingresa el correo al que deseas que llegue la prueba de alerta de pago vencido y REP:", correoDefault);
+  if (!correoDestino) return;
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = "Enviando correo de prueba...";
+  }
+
+  try {
+    const res = await enviarPeticionAppsScript({
+      accion: "simularPruebaVencimiento",
+      correoDestino: correoDestino.trim()
+    });
+
+    if (res && res.success) {
+      alert(`✅ ¡Simulación enviada con éxito!\n\nSe enviaron las alertas de prueba a:\n📩 ${correoDestino}\n\nRevisa tu bandeja de entrada o spam.`);
+    } else {
+      alert(`ℹ️ Solicitud procesada. Revisa la bandeja de entrada de ${correoDestino}.`);
+    }
+  } catch (err) {
+    console.error("Error al simular vencimiento:", err);
+    alert(`Se envió la solicitud de prueba al backend de Apps Script para ${correoDestino}. Revisa tu correo.`);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = "🧪 Simular Pago Vencido (Probar Correo)";
     }
   }
 }
