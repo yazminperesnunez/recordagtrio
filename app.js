@@ -1,7 +1,7 @@
 // app.js - Lógica FrontEnd para Gestión de OC en Parcialidades, Calendario y Control de Facturas/REP
 // Se conecta a Google Apps Script y dispone de fallback reactivo local e interactivo.
 
-const SCRIPT_URL_PARCIALIDADES = "https://script.google.com/macros/s/AKfycbwvUcHpJuqBqKNS9zQRxFq2iF3Ri83JdWMEyXngqEY/dev";
+const SCRIPT_URL_PARCIALIDADES = "https://script.google.com/macros/s/AKfycbxhmyrIhEpWrLEyhAN2dMdMzZsKZqj5ohQucu1lqALQAqNuey-_En1QhdllVjAmwaX9/exec";
 
 // Estado en memoria
 let estadoApp = {
