@@ -508,38 +508,56 @@ function enviarCorreoAlertaPagoVencidoUsuario(idParc, folioOC, proveedor, monto,
 function enviarRecordatorioEspecifico(data) {
   const ss = getSpreadsheet();
   const sheetParc = ss.getSheetByName("Calendario_Pagos");
-  const dataParc = sheetParc.getDataRange().getValues();
-  const idParc = data.idParcialidad;
+  const idParc = data.idParcialidad || "";
 
+  let folioOC = data.folioOC || "";
+  let numParc = data.numParcialidad || "Parcialidad";
+  let fechaPago = data.fechaPago || new Date().toISOString().split('T')[0];
+  let monto = data.monto || 0;
+  let proveedor = data.proveedor || "Proveedor";
+  let correoProv = data.correoProveedor || "";
   let fila = -1;
-  let row = null;
-  for (let i = 1; i < dataParc.length; i++) {
-    if (dataParc[i][0] === idParc) {
-      fila = i + 1;
-      row = dataParc[i];
-      break;
+
+  if (sheetParc) {
+    const dataParc = sheetParc.getDataRange().getValues();
+    for (let i = 1; i < dataParc.length; i++) {
+      if (dataParc[i][0] === idParc) {
+        fila = i + 1;
+        const row = dataParc[i];
+        folioOC = row[1] || folioOC;
+        numParc = row[2] || numParc;
+        fechaPago = row[5] || fechaPago;
+        monto = row[6] || row[4] || monto;
+        proveedor = row[13] || proveedor;
+        correoProv = row[14] || correoProv;
+        break;
+      }
     }
   }
 
-  if (!row) throw new Error("Parcialidad no encontrada: " + idParc);
-
-  const folioOC = row[1];
-  const numParc = row[2];
-  const fechaPago = row[5] || new Date().toISOString().split('T')[0];
-  const monto = row[6] || row[4];
-  const proveedor = row[13] || "Proveedor";
-  const correoProv = row[14] || "";
-
+  // Enviar alerta al usuario
   enviarCorreoAlertaUsuario(idParc, folioOC, proveedor, monto, fechaPago, 25);
+
+  // Enviar recordatorio al proveedor si tiene correo
   if (correoProv) {
     enviarCorreoRequerimientoProveedor(correoProv, proveedor, folioOC, numParc, monto, fechaPago);
   }
 
-  const hoyStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || "GMT-6", "yyyy-MM-dd");
-  sheetParc.getRange(fila, 12).setValue(hoyStr);
-  sheetParc.getRange(fila, 13).setValue(hoyStr);
+  // Actualizar fechas de último aviso en la hoja si se encontró la fila
+  if (fila !== -1 && sheetParc) {
+    const hoyStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || "GMT-6", "yyyy-MM-dd");
+    sheetParc.getRange(fila, 12).setValue(hoyStr);
+    sheetParc.getRange(fila, 13).setValue(hoyStr);
+  }
 
-  return { success: true, message: "Recordatorios enviados exitosamente" };
+  return { 
+    success: true, 
+    idParcialidad: idParc,
+    folioOC: folioOC,
+    proveedor: proveedor,
+    correoProveedor: correoProv,
+    message: "Recordatorios enviados exitosamente" 
+  };
 }
 
 function simularPruebaVencimientoYEnviarCorreo(data) {

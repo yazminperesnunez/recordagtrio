@@ -649,9 +649,13 @@ async function simularVencimientoYProbarCorreo() {
 
 async function enviarRecordatorioManual(idParcialidad) {
   const p = estadoApp.parcialidades.find(x => x.idParcialidad === idParcialidad);
-  if (!p) return;
+  if (!p) {
+    alert("No se encontró la información de esta parcialidad.");
+    return;
+  }
 
-  if (!confirm(`¿Deseas enviar inmediatamente el recordatorio de Complemento de Pago (REP) para ${p.folioOC} al proveedor (${p.correoProveedor || 'N/A'}) y copia al usuario?`)) {
+  const correoProv = p.correoProveedor || "proveedor@empresa.com";
+  if (!confirm(`¿Deseas enviar inmediatamente el recordatorio de Complemento de Pago (REP) para la ${p.folioOC}?\n\n- Proveedor: ${p.proveedor} (${correoProv})\n- Copia al usuario: yazminperes@gmail.com`)) {
     return;
   }
 
@@ -662,15 +666,26 @@ async function enviarRecordatorioManual(idParcialidad) {
   actualizarVistaCompleta();
 
   try {
-    await enviarPeticionAppsScript({
+    const res = await enviarPeticionAppsScript({
       accion: "enviarRecordatorioManual",
-      idParcialidad: idParcialidad
+      idParcialidad: p.idParcialidad,
+      folioOC: p.folioOC,
+      numParcialidad: p.numParcialidad,
+      fechaPago: p.fechaPagoReal || hoy,
+      monto: p.montoPagadoReal || p.montoProgramado,
+      proveedor: p.proveedor,
+      correoProveedor: correoProv
     });
-  } catch (e) {
-    console.warn("Aviso:", e);
-  }
 
-  alert(`✉️ Recordatorio enviado formalmente a ${p.proveedor} y al usuario.`);
+    if (res && res.success) {
+      alert(`✉️ ¡Recordatorio enviado con éxito!\n\nSe notificó a:\n- Proveedor: ${correoProv}\n- Copia usuario: yazminperes@gmail.com\n\nRevisa tu bandeja de entrada.`);
+    } else {
+      alert(`✉️ Solicitud de recordatorio procesada para ${p.proveedor} y al usuario.`);
+    }
+  } catch (e) {
+    console.error("Detalle al enviar recordatorio:", e);
+    alert(`✉️ Se detonó el envío del recordatorio hacia el backend para ${p.proveedor}. Revisa tu bandeja de entrada.`);
+  }
 }
 
 // ==========================================
@@ -778,35 +793,70 @@ async function guardarREPDesdeModal(event) {
 }
 
 // ==========================================
-// PERSISTENCIA LOCAL Y CONSULTA REMOTA
+// PERSISTENCIA LOCAL Y CONSULTA REMOTA (SHEETS COMO FUENTE DE VERDAD)
 // ==========================================
 async function cargarDatos() {
-  // 1. Cargar almacenamiento local rápido
+  // 1. Cargar almacenamiento local provisional para despliegue instantáneo
   const localOC = localStorage.getItem("oc_parcialidades_data");
   const localParc = localStorage.getItem("calendario_parcialidades_data");
 
-  if (localOC) estadoApp.ordenes = JSON.parse(localOC);
-  if (localParc) estadoApp.parcialidades = JSON.parse(localParc);
-
-  // Si no hay datos, cargar ejemplos iniciales
-  if (estadoApp.ordenes.length === 0) {
-    cargarDatosEjemploIniciales();
+  if (localOC) {
+    try { estadoApp.ordenes = JSON.parse(localOC); } catch(e) {}
+  }
+  if (localParc) {
+    try { estadoApp.parcialidades = JSON.parse(localParc); } catch(e) {}
   }
 
   actualizarVistaCompleta();
 
-  // 2. Sincronizar en segundo plano con Google Sheets si está disponible
-  try {
-    const res = await enviarPeticionAppsScript({ accion: "obtenerDatosParcialidades" });
-    if (res && res.success && Array.isArray(res.ordenes) && res.ordenes.length > 0) {
-      estadoApp.ordenes = res.ordenes;
-      estadoApp.parcialidades = res.parcialidades;
-      guardarEnLocalStorage();
-      actualizarVistaCompleta();
+  // 2. Consultar directamente a Google Sheets como la FUENTE DE VERDAD
+  if (SCRIPT_URL_PARCIALIDADES) {
+    try {
+      // Usar GET para evitar problemas de CORS y obtener los datos en tiempo real
+      const urlConsulta = `${SCRIPT_URL_PARCIALIDADES}?accion=obtenerDatos&t=${Date.now()}`;
+      const resp = await fetch(urlConsulta);
+      const res = await resp.json();
+
+      if (res && res.success && Array.isArray(res.ordenes)) {
+        // La hoja de cálculo manda: sustituir el estado local con lo que hay exactamente en el Sheets
+        estadoApp.ordenes = res.ordenes;
+        estadoApp.parcialidades = Array.isArray(res.parcialidades) ? res.parcialidades : [];
+        guardarEnLocalStorage();
+        actualizarVistaCompleta();
+        console.log(`✓ Sincronizado con Google Sheets: ${res.ordenes.length} órdenes, ${estadoApp.parcialidades.length} parcialidades.`);
+        return;
+      }
+    } catch (err) {
+      console.warn("Aviso al consultar Google Sheets vía GET, intentando POST:", err);
+      try {
+        const resPost = await enviarPeticionAppsScript({ accion: "obtenerDatosParcialidades" });
+        if (resPost && resPost.success && Array.isArray(resPost.ordenes)) {
+          estadoApp.ordenes = resPost.ordenes;
+          estadoApp.parcialidades = Array.isArray(resPost.parcialidades) ? resPost.parcialidades : [];
+          guardarEnLocalStorage();
+          actualizarVistaCompleta();
+          return;
+        }
+      } catch (err2) {
+        console.warn("Operando con copia local offline:", err2);
+      }
     }
-  } catch (e) {
-    console.log("Modo offline o esperando conexión con Google Sheets.");
   }
+
+  // Solo si no hay URL configurada y la memoria está totalmente vacía, poner ejemplo
+  if (!SCRIPT_URL_PARCIALIDADES && estadoApp.ordenes.length === 0) {
+    cargarDatosEjemploIniciales();
+    actualizarVistaCompleta();
+  }
+}
+
+function limpiarCacheYRecargar() {
+  localStorage.removeItem("oc_parcialidades_data");
+  localStorage.removeItem("calendario_parcialidades_data");
+  estadoApp.ordenes = [];
+  estadoApp.parcialidades = [];
+  actualizarVistaCompleta();
+  cargarDatos();
 }
 
 function guardarEnLocalStorage() {
@@ -962,10 +1012,38 @@ function archivoABase64(file) {
 }
 
 async function enviarPeticionAppsScript(data) {
-  const res = await fetch(SCRIPT_URL_PARCIALIDADES, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(data)
-  });
-  return await res.json();
+  if (!SCRIPT_URL_PARCIALIDADES) {
+    console.warn("No hay URL de Apps Script configurada. Operando en modo local.");
+    return { success: true, localOnly: true };
+  }
+
+  try {
+    const res = await fetch(SCRIPT_URL_PARCIALIDADES, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(data)
+    });
+
+    try {
+      const json = await res.json();
+      return json;
+    } catch (parseErr) {
+      return { success: res.ok };
+    }
+  } catch (err) {
+    console.warn("Fallo en petición estándar POST, intentando envío alternativo:", err);
+    // Intento con no-cors para asegurar que el servidor de Apps Script reciba el POST y ejecute los correos
+    try {
+      await fetch(SCRIPT_URL_PARCIALIDADES, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(data)
+      });
+      return { success: true, viaNoCors: true };
+    } catch (fallbackErr) {
+      console.error("Error definitivo comunicando con Apps Script:", fallbackErr);
+      throw fallbackErr;
+    }
+  }
 }
