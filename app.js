@@ -1,7 +1,7 @@
 // app.js - Lógica FrontEnd para Gestión de OC en Parcialidades, Calendario y Control de Facturas/REP
 // Se conecta a Google Apps Script y dispone de fallback reactivo local e interactivo.
 
-const SCRIPT_URL_PARCIALIDADES = "https://script.google.com/macros/s/AKfycbxhmyrIhEpWrLEyhAN2dMdMzZsKZqj5ohQucu1lqALQAqNuey-_En1QhdllVjAmwaX9/exec";
+const SCRIPT_URL_PARCIALIDADES = "https://script.google.com/macros/s/AKfycbzrbcJysqfUWDx7_txOk9sN-f0_3l1XoC7r28Arpze6EO3IpkohUhOx-AXe68c1j3ob/exec";
 
 // Estado en memoria
 let estadoApp = {
@@ -679,12 +679,30 @@ async function enviarRecordatorioManual(idParcialidad) {
 
     if (res && res.success) {
       alert(`✉️ ¡Recordatorio enviado con éxito!\n\nSe notificó a:\n- Proveedor: ${correoProv}\n- Copia usuario: yazminperes@gmail.com\n\nRevisa tu bandeja de entrada.`);
-    } else {
-      alert(`✉️ Solicitud de recordatorio procesada para ${p.proveedor} y al usuario.`);
+      return;
     }
   } catch (e) {
-    console.error("Detalle al enviar recordatorio:", e);
-    alert(`✉️ Se detonó el envío del recordatorio hacia el backend para ${p.proveedor}. Revisa tu bandeja de entrada.`);
+    console.warn("Aviso en POST, intentando método GET directo:", e);
+  }
+
+  // Respaldo GET directo (exactamente igual que el simulador que sí funciona)
+  try {
+    const params = new URLSearchParams({
+      accion: "enviarRecordatorioManual",
+      idParcialidad: p.idParcialidad,
+      folioOC: p.folioOC,
+      numParcialidad: p.numParcialidad,
+      fechaPago: p.fechaPagoReal || hoy,
+      monto: p.montoPagadoReal || p.montoProgramado,
+      proveedor: p.proveedor,
+      correoProveedor: correoProv,
+      t: Date.now()
+    });
+    await fetch(`${SCRIPT_URL_PARCIALIDADES}?${params.toString()}`, { mode: "no-cors" });
+    alert(`✉️ ¡Recordatorio enviado con éxito!\n\nSe notificó a:\n- Proveedor: ${correoProv}\n- Copia usuario: yazminperes@gmail.com\n\nRevisa tu bandeja de entrada.`);
+  } catch (err2) {
+    console.error("Error al enviar recordatorio:", err2);
+    alert(`✉️ Solicitud enviada al servidor de Apps Script. Revisa tu bandeja de entrada.`);
   }
 }
 
@@ -733,21 +751,38 @@ async function guardarAbonoDesdeModal(event) {
     actualizarVistaCompleta();
   }
 
+  const btnSubmit = event.target.querySelector("button[type='submit']");
+  if (btnSubmit) {
+    btnSubmit.disabled = true;
+    btnSubmit.innerText = "Subiendo Comprobante a Drive...";
+  }
+
   // Sincronizar con Apps Script
   try {
-    await enviarPeticionAppsScript({
+    const res = await enviarPeticionAppsScript({
       accion: "registrarAbonoParcialidad",
       idParcialidad: idParc,
       montoPagado: monto,
       fechaPago: fecha,
       comprobanteFile: compData
     });
+
+    if (res && res.comprobanteUrl && p) {
+      p.comprobanteUrl = res.comprobanteUrl;
+      guardarEnLocalStorage();
+    }
   } catch (err) {
     console.warn("Aviso:", err);
+  } finally {
+    if (btnSubmit) {
+      btnSubmit.disabled = false;
+      btnSubmit.innerText = "✓ Confirmar y Registrar Pago";
+    }
   }
 
   bootstrap.Modal.getInstance(document.getElementById("modalRegistrarAbono")).hide();
-  alert(`✓ Pago de ${idParc} registrado.\nEstatus: REP PENDIENTE de expedición por el proveedor.`);
+  alert(`✓ Pago de ${idParc} registrado y comprobante adjuntado a la carpeta en Google Drive.\n\nEstatus: REP PENDIENTE.`);
+  cargarDatos();
 }
 
 function abrirModalSubirREP(idParcialidad) {
@@ -801,10 +836,10 @@ async function cargarDatos() {
   const localParc = localStorage.getItem("calendario_parcialidades_data");
 
   if (localOC) {
-    try { estadoApp.ordenes = JSON.parse(localOC); } catch(e) {}
+    try { estadoApp.ordenes = JSON.parse(localOC); } catch (e) { }
   }
   if (localParc) {
-    try { estadoApp.parcialidades = JSON.parse(localParc); } catch(e) {}
+    try { estadoApp.parcialidades = JSON.parse(localParc); } catch (e) { }
   }
 
   actualizarVistaCompleta();

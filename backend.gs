@@ -79,6 +79,17 @@ function doGet(e) {
       idParcialidad: e.parameter.idParcialidad || ""
     }));
   }
+  if (accion === "enviarRecordatorioManual") {
+    return respuestaJSON(enviarRecordatorioEspecifico({
+      idParcialidad: e.parameter.idParcialidad || "",
+      folioOC: e.parameter.folioOC || "",
+      numParcialidad: e.parameter.numParcialidad || "",
+      fechaPago: e.parameter.fechaPago || "",
+      monto: e.parameter.monto || 0,
+      proveedor: e.parameter.proveedor || "",
+      correoProveedor: e.parameter.correoProveedor || ""
+    }));
+  }
   return respuestaJSON({ success: true, message: "API Parcialidades y Control REP Activa" });
 }
 
@@ -170,17 +181,17 @@ function procesarNuevaOrdenParcialidades(data) {
 
   let urlFacturaGlobal = "";
   if (data.facturaGlobalFile) {
-    urlFacturaGlobal = guardarArchivoDriveBlob(carpetaOC, data.facturaGlobalFile, "Factura_Global_" + folioOC);
+    urlFacturaGlobal = guardarArchivoDriveBlob(carpetaOC, data.facturaGlobalFile, "Factura-" + folioOC);
   }
 
   let urlContrato = "";
   if (data.contratoFile) {
-    urlContrato = guardarArchivoDriveBlob(carpetaOC, data.contratoFile, "Contrato_" + folioOC);
+    urlContrato = guardarArchivoDriveBlob(carpetaOC, data.contratoFile, "Contrato-" + folioOC);
   }
 
   let urlOCArchivo = "";
   if (data.ocArchivoFile) {
-    urlOCArchivo = guardarArchivoDriveBlob(carpetaOC, data.ocArchivoFile, "Documento_OC_" + folioOC);
+    urlOCArchivo = guardarArchivoDriveBlob(carpetaOC, data.ocArchivoFile, folioOC);
   }
 
   // Insertar cabecera de OC
@@ -253,6 +264,7 @@ function procesarAbono(data) {
 
   let filaEncontrada = -1;
   let folioOC = "";
+  let numParcTexto = "";
   let fechaPago = data.fechaPago || new Date().toISOString().split('T')[0];
   let montoPagado = parseFloat(data.montoPagado) || 0;
 
@@ -260,6 +272,7 @@ function procesarAbono(data) {
     if (dataParc[i][0] === idParcialidad) {
       filaEncontrada = i + 1;
       folioOC = dataParc[i][1];
+      numParcTexto = dataParc[i][2] || "";
       if (montoPagado <= 0) montoPagado = parseFloat(dataParc[i][4]) || 0;
       break;
     }
@@ -267,11 +280,16 @@ function procesarAbono(data) {
 
   if (filaEncontrada === -1) throw new Error("Parcialidad no encontrada: " + idParcialidad);
 
-  // Subir ficha o comprobante de pago
+  // Obtener número simple de parcialidad para el nombre de archivo (ej. PAGOp1-9156EW)
+  const matchNum = idParcialidad.match(/-P(\d+)$/i);
+  const numP = matchNum ? matchNum[1] : "1";
+  const prefijoPago = "PAGOp" + numP + "-" + folioOC;
+
+  // Subir ficha o comprobante de pago a la carpeta única de esa OC
   let urlComprobante = "";
   if (data.comprobanteFile) {
     let carpeta = obtenerCarpetaOC(folioOC);
-    urlComprobante = guardarArchivoDriveBlob(carpeta, data.comprobanteFile, "Comprobante_" + idParcialidad);
+    urlComprobante = guardarArchivoDriveBlob(carpeta, data.comprobanteFile, prefijoPago);
   }
 
   // Actualizar la parcialidad: Pasa a PAGADO y Estatus REP a PENDIENTE
@@ -284,7 +302,7 @@ function procesarAbono(data) {
   // Recalcular saldo de la OC global
   actualizarSaldosOC(folioOC);
 
-  return { success: true, idParcialidad: idParcialidad, estatusREP: "PENDIENTE" };
+  return { success: true, idParcialidad: idParcialidad, estatusREP: "PENDIENTE", comprobanteUrl: urlComprobante };
 }
 
 // ---------------------------------------------------
@@ -310,10 +328,14 @@ function procesarSubidaREP(data) {
 
   if (filaEncontrada === -1) throw new Error("Parcialidad no encontrada: " + idParcialidad);
 
+  const matchNum = idParcialidad.match(/-P(\d+)$/i);
+  const numP = matchNum ? matchNum[1] : "1";
+  const prefijoREP = "REPp" + numP + "-" + folioOC;
+
   let urlREP = "";
   if (data.repFile) {
     let carpeta = obtenerCarpetaOC(folioOC);
-    urlREP = guardarArchivoDriveBlob(carpeta, data.repFile, "REP_Complemento_" + idParcialidad);
+    urlREP = guardarArchivoDriveBlob(carpeta, data.repFile, prefijoREP);
   }
 
   // Marcar como RECIBIDO
@@ -749,6 +771,31 @@ function asegurarHojasEstructura(ss) {
 }
 
 function obtenerCarpetaOC(folioOC) {
+  let ss = getSpreadsheet();
+  let sheetOC = ss.getSheetByName("OC_Parcialidades");
+
+  // 1. Intentar recuperar la carpeta exacta ya registrada en la hoja de cálculo
+  if (sheetOC) {
+    let dataOC = sheetOC.getDataRange().getValues();
+    for (let i = 1; i < dataOC.length; i++) {
+      if (dataOC[i][0] === folioOC) {
+        let carpetaUrl = dataOC[i][13]; // Columna Carpeta_Drive
+        if (carpetaUrl && carpetaUrl.toString().indexOf("/folders/") !== -1) {
+          try {
+            let folderId = carpetaUrl.toString().split("/folders/")[1].split("?")[0];
+            let carpetaExistente = DriveApp.getFolderById(folderId);
+            carpetaExistente.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+            return carpetaExistente;
+          } catch (e) {
+            Logger.log("Aviso al acceder por ID a la carpeta: " + e);
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  // 2. Si no se encontró por URL, buscar en la carpeta raíz CONTROL_PARCIALIDADES_OC
   let iter = DriveApp.getFoldersByName("CONTROL_PARCIALIDADES_OC");
   let carpetaRaiz = iter.hasNext() ? iter.next() : DriveApp.createFolder("CONTROL_PARCIALIDADES_OC");
   carpetaRaiz.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
