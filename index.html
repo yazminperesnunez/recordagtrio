@@ -25,15 +25,9 @@
       <button type="button" class="btn btn-sm btn-outline-primary fw-semibold" id="btn-sincronizar-sheets" onclick="limpiarCacheYRecargar()" title="Forzar lectura en vivo de la hoja de Google Sheets">
         🔄 Sincronizar con Google Sheets
       </button>
-      <button type="button" class="btn btn-sm btn-warning fw-semibold" id="btn-simular-vencido" onclick="simularVencimientoYProbarCorreo()">
-        🧪 Simular Pago Vencido
-      </button>
       <button type="button" class="btn btn-sm btn-outline-danger" id="btn-ejecutar-cron" onclick="dispararAuditoriaManual()">
         ⚡ Ejecutar Auditoría REP
       </button>
-      <a href="../version_sheets_drive/index.html" class="btn btn-sm btn-outline-secondary">
-        ← Volver al Sistema General
-      </a>
     </div>
   </header>
 
@@ -118,131 +112,213 @@
       <!-- COLUMNA IZQUIERDA: REGISTRO ÁGIL DE OC CON PARCIALIDADES -->
       <div class="col-lg-5">
         <div class="card shadow-sm h-100">
-          <div class="card-header bg-white py-3">
-            <h6 class="m-0 fw-bold text-primary d-flex align-items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-              Nueva Orden de Compra en Parcialidades
-            </h6>
+          <div class="card-header bg-white p-0 border-bottom">
+            <ul class="nav nav-tabs card-header-tabs m-0 border-0" id="tabs-creacion-archivos" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button class="nav-link active fw-bold py-3 px-3 d-flex align-items-center gap-2" id="tab-nueva-oc-btn" data-bs-toggle="tab" data-bs-target="#panel-nueva-oc" type="button" role="tab" aria-controls="panel-nueva-oc" aria-selected="true">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                  Nueva Orden de Compra
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link fw-bold py-3 px-3 text-secondary d-flex align-items-center gap-2" id="tab-adjuntar-archivos-btn" data-bs-toggle="tab" data-bs-target="#panel-adjuntar-archivos" type="button" role="tab" aria-controls="panel-adjuntar-archivos" aria-selected="false" onclick="actualizarSelectorOCsArchivos()">
+                  <span>📂</span>
+                  Adjuntar a OC Existente
+                </button>
+              </li>
+            </ul>
           </div>
           <div class="card-body">
-            <form id="form-crear-oc" onsubmit="guardarNuevaOrden(event)">
-              <div class="row g-3">
-                <!-- Folio OC -->
-                <div class="col-md-7">
-                  <label class="form-label small fw-semibold">ID / Folio de la Orden de Compra *</label>
-                  <div class="input-group input-group-sm">
-                    <input type="text" id="oc-folio" class="form-control font-monospace fw-bold" required placeholder="Ej. OC-9021">
-                    <button class="btn btn-outline-secondary" type="button" onclick="alternarEdicionFolio()" title="Editar o ingresar folio manual">✏️</button>
+            <div class="tab-content" id="contenidoTabsOC">
+              
+              <!-- PESTAÑA 1: NUEVA ORDEN DE COMPRA -->
+              <div class="tab-pane fade show active" id="panel-nueva-oc" role="tabpanel" aria-labelledby="tab-nueva-oc-btn">
+                <form id="form-crear-oc" onsubmit="guardarNuevaOrden(event)">
+                  <div class="row g-3">
+                    <!-- Folio OC -->
+                    <div class="col-md-7">
+                      <label class="form-label small fw-semibold">ID / Folio de la Orden de Compra *</label>
+                      <div class="input-group input-group-sm">
+                        <input type="text" id="oc-folio" class="form-control font-monospace fw-bold" required placeholder="Ej. OC-9021">
+                        <button class="btn btn-outline-secondary" type="button" onclick="alternarEdicionFolio()" title="Editar o ingresar folio manual">✏️</button>
+                      </div>
+                      <div class="form-text small" style="font-size: 11px;">Se autogenera o puedes escribir el de tu empresa.</div>
+                    </div>
+
+                    <div class="col-md-5">
+                      <label class="form-label small fw-semibold">Día de Pago del Mes *</label>
+                      <select id="oc-dia-pago" class="form-select form-select-sm fw-bold text-primary" onchange="previsualizarPlanPagos()">
+                        <option value="1" selected>Día 1 de cada mes</option>
+                        <option value="5">Día 5 de cada mes</option>
+                        <option value="10">Día 10 de cada mes</option>
+                        <option value="15">Día 15 de cada mes (Quincenal)</option>
+                        <option value="20">Día 20 de cada mes</option>
+                        <option value="28">Día 28 / Fin de mes</option>
+                      </select>
+                    </div>
+
+                    <!-- Proveedor y RFC -->
+                    <div class="col-md-7">
+                      <label class="form-label small fw-semibold">Razón Social del Proveedor *</label>
+                      <input type="text" id="oc-proveedor" class="form-control form-control-sm" required placeholder="Ej. Aceros y Tuberías del Norte S.A.">
+                    </div>
+                    <div class="col-md-5">
+                      <label class="form-label small fw-semibold">RFC</label>
+                      <input type="text" id="oc-rfc" class="form-control form-control-sm text-uppercase" placeholder="ATN190805ABC">
+                    </div>
+
+                    <!-- Correo Proveedor -->
+                    <div class="col-md-12">
+                      <label class="form-label small fw-semibold text-primary">Correo Electrónico para Recordatorios de Factura/REP *</label>
+                      <input type="email" id="oc-correo" class="form-control form-control-sm" required placeholder="facturacion@proveedor.com">
+                      <div class="form-text small" style="font-size: 11px;">A esta cuenta se enviará el recordatorio semanal si no han emitido el REP.</div>
+                    </div>
+
+                    <!-- Concepto -->
+                    <div class="col-12">
+                      <label class="form-label small fw-semibold">Concepto / Descripción del Acuerdo</label>
+                      <input type="text" id="oc-concepto" class="form-control form-control-sm" placeholder="Ej. Adquisición de lote con financiamiento a 6 meses">
+                    </div>
+
+                    <!-- Monto Total y Plazo -->
+                    <div class="col-md-6">
+                      <label class="form-label small fw-semibold">Monto Total Acordado (MXN) *</label>
+                      <input type="number" id="oc-monto-total" class="form-control form-control-sm font-monospace fw-bold" required min="1" step="0.01" placeholder="Ej. 120000" oninput="previsualizarPlanPagos()">
+                    </div>
+
+                    <div class="col-md-6">
+                      <label class="form-label small fw-semibold">Plazo Comprometido *</label>
+                      <select id="oc-plazo-meses" class="form-select form-select-sm" onchange="previsualizarPlanPagos()">
+                        <option value="2">2 Meses (2 Pagos)</option>
+                        <option value="3">3 Meses (3 Pagos)</option>
+                        <option value="4">4 Meses (4 Pagos)</option>
+                        <option value="6" selected>6 Meses (6 Pagos)</option>
+                        <option value="9">9 Meses (9 Pagos)</option>
+                        <option value="12">12 Meses (12 Pagos)</option>
+                      </select>
+                    </div>
+
+                    <div class="col-md-6">
+                      <label class="form-label small fw-semibold">Fecha del Primer Pago *</label>
+                      <input type="date" id="oc-fecha-inicio" class="form-control form-control-sm" required onchange="previsualizarPlanPagos()">
+                    </div>
+
+                    <!-- Carga de Documentación de Respaldo -->
+                    <div class="col-md-6">
+                      <label class="form-label small fw-semibold">Factura Global PPD (Opcional)</label>
+                      <input type="file" id="oc-factura-global-file" class="form-control form-control-sm" accept=".pdf,.xml">
+                    </div>
+
+                    <div class="col-md-6">
+                      <label class="form-label small fw-semibold text-primary">📑 Contrato Firmado (Opcional)</label>
+                      <input type="file" id="oc-contrato-file" class="form-control form-control-sm" accept=".pdf,.docx,.doc">
+                      <div class="form-text small" style="font-size: 11px;">Se guardará en la carpeta de Drive de esta OC.</div>
+                    </div>
+
+                    <div class="col-md-6">
+                      <label class="form-label small fw-semibold text-primary">📄 Documento / PDF de la OC (Opcional)</label>
+                      <input type="file" id="oc-archivo-file" class="form-control form-control-sm" accept=".pdf,.png,.jpg,.jpeg">
+                      <div class="form-text small" style="font-size: 11px;">Orden de compra formal con firmas o cotización.</div>
+                    </div>
                   </div>
-                  <div class="form-text small" style="font-size: 11px;">Se autogenera o puedes escribir el de tu empresa.</div>
-                </div>
 
-                <div class="col-md-5">
-                  <label class="form-label small fw-semibold">Día de Pago del Mes *</label>
-                  <select id="oc-dia-pago" class="form-select form-select-sm fw-bold text-primary" onchange="previsualizarPlanPagos()">
-                    <option value="1" selected>Día 1 de cada mes</option>
-                    <option value="5">Día 5 de cada mes</option>
-                    <option value="10">Día 10 de cada mes</option>
-                    <option value="15">Día 15 de cada mes (Quincenal)</option>
-                    <option value="20">Día 20 de cada mes</option>
-                    <option value="28">Día 28 / Fin de mes</option>
-                  </select>
-                </div>
+                  <!-- PREVIEW DEL PLAN DE PAGOS -->
+                  <div class="mt-4 pt-3 border-top">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                      <span class="small fw-bold text-secondary">Proyección de Pagos y Fechas Programadas:</span>
+                      <span class="badge bg-light text-primary border" id="preview-resumen-cuota"></span>
+                    </div>
+                    <div class="table-responsive rounded border bg-light" style="max-height: 180px; overflow-y: auto;">
+                      <table class="table table-sm table-hover align-middle mb-0" style="font-size: 12px;">
+                        <thead class="table-white sticky-top">
+                          <tr>
+                            <th class="text-center">#</th>
+                            <th>Fecha de Pago</th>
+                            <th class="text-end">Monto Cuota</th>
+                            <th class="text-center">Estatus</th>
+                          </tr>
+                        </thead>
+                        <tbody id="tbody-preview-plan">
+                          <!-- Dinámico -->
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
 
-                <!-- Proveedor y RFC -->
-                <div class="col-md-7">
-                  <label class="form-label small fw-semibold">Razón Social del Proveedor *</label>
-                  <input type="text" id="oc-proveedor" class="form-control form-control-sm" required placeholder="Ej. Aceros y Tuberías del Norte S.A.">
-                </div>
-                <div class="col-md-5">
-                  <label class="form-label small fw-semibold">RFC</label>
-                  <input type="text" id="oc-rfc" class="form-control form-control-sm text-uppercase" placeholder="ATN190805ABC">
-                </div>
-
-                <!-- Correo Proveedor -->
-                <div class="col-md-12">
-                  <label class="form-label small fw-semibold text-primary">Correo Electrónico para Recordatorios de Factura/REP *</label>
-                  <input type="email" id="oc-correo" class="form-control form-control-sm" required placeholder="facturacion@proveedor.com">
-                  <div class="form-text small" style="font-size: 11px;">A esta cuenta se enviará el recordatorio semanal si no han emitido el REP.</div>
-                </div>
-
-                <!-- Concepto -->
-                <div class="col-12">
-                  <label class="form-label small fw-semibold">Concepto / Descripción del Acuerdo</label>
-                  <input type="text" id="oc-concepto" class="form-control form-control-sm" placeholder="Ej. Adquisición de lote con financiamiento a 6 meses">
-                </div>
-
-                <!-- Monto Total y Plazo -->
-                <div class="col-md-6">
-                  <label class="form-label small fw-semibold">Monto Total Acordado (MXN) *</label>
-                  <input type="number" id="oc-monto-total" class="form-control form-control-sm font-monospace fw-bold" required min="1" step="0.01" placeholder="Ej. 120000" oninput="previsualizarPlanPagos()">
-                </div>
-
-                <div class="col-md-6">
-                  <label class="form-label small fw-semibold">Plazo Comprometido *</label>
-                  <select id="oc-plazo-meses" class="form-select form-select-sm" onchange="previsualizarPlanPagos()">
-                    <option value="2">2 Meses (2 Pagos)</option>
-                    <option value="3">3 Meses (3 Pagos)</option>
-                    <option value="4">4 Meses (4 Pagos)</option>
-                    <option value="6" selected>6 Meses (6 Pagos)</option>
-                    <option value="9">9 Meses (9 Pagos)</option>
-                    <option value="12">12 Meses (12 Pagos)</option>
-                  </select>
-                </div>
-
-                <div class="col-md-6">
-                  <label class="form-label small fw-semibold">Fecha del Primer Pago *</label>
-                  <input type="date" id="oc-fecha-inicio" class="form-control form-control-sm" required onchange="previsualizarPlanPagos()">
-                </div>
-
-                <!-- Carga de Documentación de Respaldo -->
-                <div class="col-md-6">
-                  <label class="form-label small fw-semibold">Factura Global PPD (Opcional)</label>
-                  <input type="file" id="oc-factura-global-file" class="form-control form-control-sm" accept=".pdf,.xml">
-                </div>
-
-                <div class="col-md-6">
-                  <label class="form-label small fw-semibold text-primary">📑 Contrato Firmado (Opcional)</label>
-                  <input type="file" id="oc-contrato-file" class="form-control form-control-sm" accept=".pdf,.docx,.doc">
-                  <div class="form-text small" style="font-size: 11px;">Se guardará en la carpeta de Drive de esta OC.</div>
-                </div>
-
-                <div class="col-md-6">
-                  <label class="form-label small fw-semibold text-primary">📄 Documento / PDF de la OC (Opcional)</label>
-                  <input type="file" id="oc-archivo-file" class="form-control form-control-sm" accept=".pdf,.png,.jpg,.jpeg">
-                  <div class="form-text small" style="font-size: 11px;">Orden de compra formal con firmas o cotización.</div>
-                </div>
+                  <div class="mt-4 d-grid">
+                    <button type="submit" id="btn-guardar-oc" class="btn btn-primary fw-semibold">
+                      ✓ Registrar OC y Crear Calendario de Pagos
+                    </button>
+                  </div>
+                </form>
               </div>
 
-              <!-- PREVIEW DEL PLAN DE PAGOS -->
-              <div class="mt-4 pt-3 border-top">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                  <span class="small fw-bold text-secondary">Proyección de Pagos y Fechas Programadas:</span>
-                  <span class="badge bg-light text-primary border" id="preview-resumen-cuota"></span>
-                </div>
-                <div class="table-responsive rounded border bg-light" style="max-height: 180px; overflow-y: auto;">
-                  <table class="table table-sm table-hover align-middle mb-0" style="font-size: 12px;">
-                    <thead class="table-white sticky-top">
-                      <tr>
-                        <th class="text-center">#</th>
-                        <th>Fecha de Pago</th>
-                        <th class="text-end">Monto Cuota</th>
-                        <th class="text-center">Estatus</th>
-                      </tr>
-                    </thead>
-                    <tbody id="tbody-preview-plan">
-                      <!-- Dinámico -->
-                    </tbody>
-                  </table>
-                </div>
+              <!-- PESTAÑA 2: ADJUNTAR ARCHIVOS / FOTOS / CONTRATOS A OC EXISTENTE -->
+              <div class="tab-pane fade" id="panel-adjuntar-archivos" role="tabpanel" aria-labelledby="tab-adjuntar-archivos-btn">
+                <form id="form-adjuntar-archivo-oc" onsubmit="guardarArchivoOCExistente(event)">
+                  <div class="alert alert-info py-2 px-3 small mb-3 border-0 d-flex align-items-center gap-2">
+                    <span>💡</span>
+                    <div>Sube contratos, adendas, remisiones, fotos de entrega de material o documentos a la carpeta de Drive de cualquier OC activa.</div>
+                  </div>
+
+                  <div class="row g-3">
+                    <!-- Selección de la OC -->
+                    <div class="col-12">
+                      <label class="form-label small fw-semibold">Selecciona la Orden de Compra *</label>
+                      <select id="adjunto-select-oc" class="form-select form-select-sm font-monospace fw-bold text-primary" required onchange="alSeleccionarOCParaAdjuntos()">
+                        <option value="">-- Elige una Orden de Compra --</option>
+                      </select>
+                      <div id="adjunto-oc-info" class="small text-muted mt-1" style="font-size: 11px;"></div>
+                    </div>
+
+                    <!-- Enlace directo a la carpeta de Drive -->
+                    <div class="col-12" id="contenedor-link-carpeta-drive" style="display: none;">
+                      <div class="p-2 rounded bg-light border d-flex justify-content-between align-items-center">
+                        <span class="small text-muted">📁 Carpeta Google Drive asignada:</span>
+                        <a id="link-directo-carpeta-oc" href="#" target="_blank" class="btn btn-sm btn-outline-primary py-0 px-2 fw-semibold" style="font-size: 11px;">
+                          Abrir Carpeta en Drive ↗
+                        </a>
+                      </div>
+                    </div>
+
+                    <!-- Tipo de Archivo -->
+                    <div class="col-md-6">
+                      <label class="form-label small fw-semibold">Tipo de Documento *</label>
+                      <select id="adjunto-tipo-documento" class="form-select form-select-sm" required onchange="alCambiarTipoDocumentoAdjunto()">
+                        <option value="CONTRATO">📑 Contrato / Convenio Firmado</option>
+                        <option value="ENTREGA">📸 Foto de Entrega / Remisión / Evidencia</option>
+                        <option value="OC_DOC">📄 Documento Oficial de OC / Cotización</option>
+                        <option value="FACTURA">🧾 Factura Global / PPD</option>
+                        <option value="OTRO">📁 Otro Documento / Anexo</option>
+                      </select>
+                    </div>
+
+                    <!-- Etiqueta personalizada si es otro -->
+                    <div class="col-md-6" id="contenedor-etiqueta-personalizada" style="display: none;">
+                      <label class="form-label small fw-semibold">Etiqueta o Concepto</label>
+                      <input type="text" id="adjunto-etiqueta-custom" class="form-control form-control-sm" placeholder="Ej. Fianza, Póliza, Guía">
+                    </div>
+
+                    <!-- Selector de Archivo -->
+                    <div class="col-12">
+                      <label class="form-label small fw-semibold">Seleccionar Archivo (PDF, Fotos, DOCX, ZIP) *</label>
+                      <input type="file" id="adjunto-archivo-input" class="form-control form-control-sm" required accept=".pdf,.png,.jpg,.jpeg,.webp,.docx,.doc,.zip,.xml">
+                      <div class="form-text small" style="font-size: 11px;">El archivo se subirá directamente a la carpeta de Google Drive de la orden con su nombre clasificado.</div>
+                    </div>
+
+                    <div class="col-12 mt-4 d-grid">
+                      <button type="submit" id="btn-adjuntar-archivo" class="btn btn-success fw-semibold">
+                        ☁️ Subir y Guardar en la Carpeta de la OC
+                      </button>
+                    </div>
+                  </div>
+                </form>
+
+                <!-- Historial o confirmación de archivos -->
+                <div id="resultado-adjunto-alerta" class="mt-3" style="display: none;"></div>
               </div>
 
-              <div class="mt-4 d-grid">
-                <button type="submit" id="btn-guardar-oc" class="btn btn-primary fw-semibold">
-                  ✓ Registrar OC y Crear Calendario de Pagos
-                </button>
-              </div>
-            </form>
+            </div>
           </div>
         </div>
       </div>

@@ -47,6 +47,10 @@ function doPost(e) {
       return respuestaJSON(procesarSubidaREP(data));
     }
 
+    if (accion === "agregarArchivosAOrden") {
+      return respuestaJSON(procesarAgregarArchivosAOrden(data));
+    }
+
     if (accion === "enviarRecordatorioManual") {
       return respuestaJSON(enviarRecordatorioEspecifico(data));
     }
@@ -346,6 +350,68 @@ function procesarSubidaREP(data) {
 
   return { success: true, idParcialidad: idParcialidad, estatusREP: "RECIBIDO", urlREP: urlREP };
 }
+
+// ---------------------------------------------------
+// 4B. AGREGAR MÁS ARCHIVOS A UNA OC EXISTENTE
+// (Contratos, Fotos de entrega, Documentos adicionales)
+// ---------------------------------------------------
+function procesarAgregarArchivosAOrden(data) {
+  const ss = getSpreadsheet();
+  const sheetOC = ss.getSheetByName("OC_Parcialidades");
+  const folioOC = (data.folioOC || "").toUpperCase().trim();
+  if (!folioOC) throw new Error("Debe especificar el Folio de la Orden de Compra");
+
+  const carpetaOC = obtenerCarpetaOC(folioOC);
+  const dataOC = sheetOC ? sheetOC.getDataRange().getValues() : [];
+  let filaOC = -1;
+  for (let i = 1; i < dataOC.length; i++) {
+    if (dataOC[i][0] === folioOC) {
+      filaOC = i + 1;
+      break;
+    }
+  }
+
+  const tipoArchivo = data.tipoArchivo || "DOCUMENTO";
+  let prefijo = "DOC-" + folioOC;
+  let columnaActualizar = -1;
+
+  if (tipoArchivo === "CONTRATO") {
+    prefijo = "Contrato-" + folioOC;
+    columnaActualizar = 15; // Columna Contrato_URL
+  } else if (tipoArchivo === "OC_DOC") {
+    prefijo = folioOC;
+    columnaActualizar = 16; // Columna OC_Documento_URL
+  } else if (tipoArchivo === "ENTREGA" || tipoArchivo === "FOTO") {
+    prefijo = "ENTREGA-" + folioOC;
+  } else if (tipoArchivo === "FACTURA") {
+    prefijo = "Factura-" + folioOC;
+    columnaActualizar = 13; // Columna Factura_Global_URL
+  } else {
+    prefijo = (data.etiquetaPersonalizada || "ANEXO").toUpperCase().replace(/\s+/g, "_") + "-" + folioOC;
+  }
+
+  let urlSubida = "";
+  if (data.archivoFile) {
+    urlSubida = guardarArchivoDriveBlob(carpetaOC, data.archivoFile, prefijo);
+  } else {
+    throw new Error("No se recibió ningún archivo para adjuntar");
+  }
+
+  // Si corresponde a una de las columnas oficiales de la hoja y se encontró la fila, actualizarla
+  if (filaOC !== -1 && columnaActualizar !== -1 && urlSubida) {
+    sheetOC.getRange(filaOC, columnaActualizar).setValue(urlSubida);
+  }
+
+  return {
+    success: true,
+    folioOC: folioOC,
+    urlArchivo: urlSubida,
+    carpetaDriveUrl: carpetaOC.getUrl(),
+    tipoArchivo: tipoArchivo,
+    mensaje: "Archivo guardado exitosamente en la carpeta de la orden " + folioOC
+  };
+}
+
 
 // ---------------------------------------------------
 // 5. MOTOR INTELIGENTE DE RECORDATORIOS (REGLA DE NEGOCIO):

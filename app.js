@@ -1,7 +1,7 @@
 // app.js - Lógica FrontEnd para Gestión de OC en Parcialidades, Calendario y Control de Facturas/REP
 // Se conecta a Google Apps Script y dispone de fallback reactivo local e interactivo.
 
-const SCRIPT_URL_PARCIALIDADES = "https://script.google.com/macros/s/AKfycbzrbcJysqfUWDx7_txOk9sN-f0_3l1XoC7r28Arpze6EO3IpkohUhOx-AXe68c1j3ob/exec";
+const SCRIPT_URL_PARCIALIDADES = "https://script.google.com/macros/s/AKfycbwmMN_VBF-90TV3ZguuyGFgWrKnV8oFSjaj1As8cgFQaA4nohpYQ3MEtM3OjaTUmG6t/exec";
 
 // Estado en memoria
 let estadoApp = {
@@ -233,6 +233,155 @@ async function guardarNuevaOrden(event) {
 }
 
 // ==========================================
+// ADJUNTAR ARCHIVOS A OCS EXISTENTES
+// ==========================================
+function actualizarSelectorOCsArchivos(folioSeleccionar = null) {
+  const select = document.getElementById("adjunto-select-oc");
+  if (!select) return;
+
+  const valorActual = folioSeleccionar || select.value;
+  select.innerHTML = '<option value="">-- Elige una Orden de Compra --</option>';
+
+  estadoApp.ordenes.forEach(oc => {
+    const opt = document.createElement("option");
+    opt.value = oc.folioOC;
+    opt.textContent = `${oc.folioOC} - ${oc.proveedor} (${formatoMoneda(oc.montoTotal)})`;
+    if (oc.folioOC === valorActual) opt.selected = true;
+    select.appendChild(opt);
+  });
+
+  alSeleccionarOCParaAdjuntos();
+}
+
+function alSeleccionarOCParaAdjuntos() {
+  const select = document.getElementById("adjunto-select-oc");
+  const info = document.getElementById("adjunto-oc-info");
+  const contLink = document.getElementById("contenedor-link-carpeta-drive");
+  const linkDirecto = document.getElementById("link-directo-carpeta-oc");
+
+  if (!select || !select.value) {
+    if (info) info.innerHTML = "";
+    if (contLink) contLink.style.display = "none";
+    return;
+  }
+
+  const oc = estadoApp.ordenes.find(o => o.folioOC === select.value);
+  if (!oc) return;
+
+  if (info) {
+    info.innerHTML = `Proveedor: <strong>${oc.proveedor}</strong> | Plazo: ${oc.plazoMeses} meses | Saldo: <strong class="text-danger">${formatoMoneda(oc.saldoPendiente)}</strong>`;
+  }
+
+  if (contLink && linkDirecto) {
+    if (oc.carpetaDriveUrl) {
+      contLink.style.display = "block";
+      linkDirecto.href = oc.carpetaDriveUrl;
+      linkDirecto.innerText = `Abrir Carpeta ${oc.folioOC} en Drive ↗`;
+    } else {
+      contLink.style.display = "none";
+    }
+  }
+}
+
+function alCambiarTipoDocumentoAdjunto() {
+  const tipo = document.getElementById("adjunto-tipo-documento").value;
+  const contCustom = document.getElementById("contenedor-etiqueta-personalizada");
+  if (contCustom) {
+    contCustom.style.display = (tipo === "OTRO") ? "block" : "none";
+  }
+}
+
+function irAAdjuntarArchivosOC(folioOC) {
+  // Activar la pestaña 2 de Adjuntos
+  const tabBtn = document.getElementById("tab-adjuntar-archivos-btn");
+  if (tabBtn) {
+    const tabInst = new bootstrap.Tab(tabBtn);
+    tabInst.show();
+  }
+  actualizarSelectorOCsArchivos(folioOC);
+
+  // Scroll suave al formulario
+  const elem = document.getElementById("panel-adjuntar-archivos");
+  if (elem) elem.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+async function guardarArchivoOCExistente(event) {
+  event.preventDefault();
+  const selectOC = document.getElementById("adjunto-select-oc");
+  const folioOC = selectOC ? selectOC.value : "";
+  const tipoDoc = document.getElementById("adjunto-tipo-documento").value;
+  const etiquetaCustom = document.getElementById("adjunto-etiqueta-custom") ? document.getElementById("adjunto-etiqueta-custom").value : "";
+  const fileInput = document.getElementById("adjunto-archivo-input");
+  const btn = document.getElementById("btn-adjuntar-archivo");
+  const divAlerta = document.getElementById("resultado-adjunto-alerta");
+
+  if (!folioOC) {
+    alert("Por favor selecciona una Orden de Compra para adjuntar el documento.");
+    return;
+  }
+
+  if (!fileInput || !fileInput.files[0]) {
+    alert("Por favor selecciona un archivo para subir.");
+    return;
+  }
+
+  const archivo = fileInput.files[0];
+  btn.disabled = true;
+  btn.innerText = "Subiendo archivo a Google Drive...";
+
+  try {
+    const fileData = await archivoABase64(archivo);
+
+    const payload = {
+      accion: "agregarArchivosAOrden",
+      folioOC: folioOC,
+      tipoArchivo: tipoDoc,
+      etiquetaPersonalizada: etiquetaCustom,
+      archivoFile: fileData
+    };
+
+    const res = await enviarPeticionAppsScript(payload);
+    console.log("Respuesta subida archivo:", res);
+
+    // Actualizar en el estado local si corresponde a los campos reconocidos
+    const oc = estadoApp.ordenes.find(o => o.folioOC === folioOC);
+    if (oc) {
+      if (res && res.carpetaDriveUrl && !oc.carpetaDriveUrl) {
+        oc.carpetaDriveUrl = res.carpetaDriveUrl;
+      }
+      if (res && res.urlArchivo) {
+        if (tipoDoc === "CONTRATO") oc.contratoUrl = res.urlArchivo;
+        if (tipoDoc === "OC_DOC") oc.ocArchivoUrl = res.urlArchivo;
+        if (tipoDoc === "FACTURA") oc.facturaGlobalUrl = res.urlArchivo;
+      }
+      guardarEnLocalStorage();
+      actualizarVistaCompleta();
+    }
+
+    if (divAlerta) {
+      divAlerta.style.display = "block";
+      const urlDrive = (res && res.urlArchivo) ? res.urlArchivo : (oc ? oc.carpetaDriveUrl : "#");
+      divAlerta.className = "alert alert-success py-2 px-3 small border-0";
+      divAlerta.innerHTML = `
+        <strong>✓ Archivo subido con éxito:</strong> Se guardó en la carpeta de la orden <strong>${folioOC}</strong>.
+        ${urlDrive ? `<div class="mt-1"><a href="${urlDrive}" target="_blank" class="fw-bold text-success text-decoration-underline">Ver archivo en Google Drive ↗</a></div>` : ''}
+      `;
+    }
+
+    alert(`✅ ¡Archivo guardado exitosamente en la carpeta de Google Drive de la orden ${folioOC}!`);
+    document.getElementById("form-adjuntar-archivo-oc").reset();
+    actualizarSelectorOCsArchivos(folioOC);
+
+  } catch (err) {
+    console.error("Error al adjuntar archivo:", err);
+    alert("Hubo un detalle al enviar el archivo a Google Drive. Por favor verifica tu conexión o los permisos del script.");
+  } finally {
+    btn.disabled = false;
+    btn.innerText = "☁️ Subir y Guardar en la Carpeta de la OC";
+  }
+}
+
+// ==========================================
 // RENDERIZADO DEL CALENDARIO
 // ==========================================
 function cambiarMesCalendario(delta) {
@@ -351,6 +500,7 @@ function actualizarVistaCompleta() {
   renderizarTablaParcialidades();
   renderizarCalendario();
   actualizarAuditoriaReglasREP();
+  actualizarSelectorOCsArchivos();
 }
 
 function renderizarKPIs() {
@@ -441,9 +591,12 @@ function renderizarTablaOrdenes() {
       <td>${generarBadgeEstatusOC(oc.estatus)}</td>
       <td class="text-center">
         <div class="d-flex justify-content-center gap-1">
+          <button type="button" class="btn btn-sm btn-outline-info py-1 px-2 d-inline-flex align-items-center gap-1" onclick="irAAdjuntarArchivosOC('${oc.folioOC}')" title="Subir contratos, evidencias o fotos a esta OC">
+            📎 <span class="d-none d-lg-inline">Adjuntar</span>
+          </button>
           ${oc.carpetaDriveUrl
         ? `<a href="${oc.carpetaDriveUrl}" target="_blank" class="btn btn-sm btn-outline-success py-1 px-2 d-inline-flex align-items-center gap-1" title="Abrir Carpeta en Google Drive con todos los archivos de esta OC">
-                 📁 <span class="d-none d-md-inline">Carpeta Drive</span>
+                 📁 <span class="d-none d-md-inline">Carpeta</span>
                </a>`
         : `<button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2" onclick="abrirCarpetaDriveSimulada('${oc.folioOC}')" title="Ver carpeta">
                  📁 Carpeta
@@ -609,40 +762,6 @@ async function dispararAuditoriaManual() {
     if (btn) {
       btn.disabled = false;
       btn.innerText = "⚡ Ejecutar Auditoría de Recordatorios REP";
-    }
-  }
-}
-
-async function simularVencimientoYProbarCorreo() {
-  const btn = document.getElementById("btn-simular-vencido");
-  const correoDefault = "yazminperes@gmail.com";
-
-  const correoDestino = prompt("Ingresa el correo al que deseas que llegue la prueba de alerta de pago vencido y REP:", correoDefault);
-  if (!correoDestino) return;
-
-  if (btn) {
-    btn.disabled = true;
-    btn.innerText = "Enviando correo de prueba...";
-  }
-
-  try {
-    const res = await enviarPeticionAppsScript({
-      accion: "simularPruebaVencimiento",
-      correoDestino: correoDestino.trim()
-    });
-
-    if (res && res.success) {
-      alert(`✅ ¡Simulación enviada con éxito!\n\nSe enviaron las alertas de prueba a:\n📩 ${correoDestino}\n\nRevisa tu bandeja de entrada o spam.`);
-    } else {
-      alert(`ℹ️ Solicitud procesada. Revisa la bandeja de entrada de ${correoDestino}.`);
-    }
-  } catch (err) {
-    console.error("Error al simular vencimiento:", err);
-    alert(`Se envió la solicitud de prueba al backend de Apps Script para ${correoDestino}. Revisa tu correo.`);
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.innerText = "🧪 Simular Pago Vencido (Probar Correo)";
     }
   }
 }
