@@ -112,7 +112,10 @@ function obtenerDatosCompletos() {
       diaPagoMes: row[9],
       estatus: row[10],
       fechaCreacion: row[11],
-      facturaGlobalUrl: row[12] || ""
+      facturaGlobalUrl: row[12] || "",
+      carpetaDriveUrl: row[13] || "",
+      contratoUrl: row[14] || "",
+      ocArchivoUrl: row[15] || ""
     });
   }
 
@@ -143,12 +146,12 @@ function obtenerDatosCompletos() {
     success: true,
     ordenes: ordenes,
     parcialidades: parcialidades,
-    fechaServidor: new Date().toISOString()
+    fechaServidor: new Date()
   };
 }
 
 // ---------------------------------------------------
-// 2. REGISTRAR ORDEN DE COMPRA CON PLAN DE PAGOS
+// 2. REGISTRAR ORDEN DE COMPRA CON PLAN DE PAGOS Y DOCUMENTACIÓN
 // ---------------------------------------------------
 function procesarNuevaOrdenParcialidades(data) {
   const ss = getSpreadsheet();
@@ -162,15 +165,22 @@ function procesarNuevaOrdenParcialidades(data) {
   const numPagos = parseInt(data.numPagos || data.plazoMeses) || 1;
   const diaPago = parseInt(data.diaPagoMes) || 1;
 
-  // Carpeta de Drive para esta OC
-  let iter = DriveApp.getFoldersByName("CONTROL_PARCIALIDADES_OC");
-  let carpetaRaiz = iter.hasNext() ? iter.next() : DriveApp.createFolder("CONTROL_PARCIALIDADES_OC");
-  let carpetaOC = carpetaRaiz.createFolder(folioOC + "_" + (data.rfc || "PROV"));
-  carpetaOC.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  // Carpeta dedicada en Drive para esta OC
+  const carpetaOC = obtenerCarpetaOC(folioOC);
 
   let urlFacturaGlobal = "";
   if (data.facturaGlobalFile) {
     urlFacturaGlobal = guardarArchivoDriveBlob(carpetaOC, data.facturaGlobalFile, "Factura_Global_" + folioOC);
+  }
+
+  let urlContrato = "";
+  if (data.contratoFile) {
+    urlContrato = guardarArchivoDriveBlob(carpetaOC, data.contratoFile, "Contrato_" + folioOC);
+  }
+
+  let urlOCArchivo = "";
+  if (data.ocArchivoFile) {
+    urlOCArchivo = guardarArchivoDriveBlob(carpetaOC, data.ocArchivoFile, "Documento_OC_" + folioOC);
   }
 
   // Insertar cabecera de OC
@@ -188,7 +198,9 @@ function procesarNuevaOrdenParcialidades(data) {
     "ACTIVA_EN_PAGO",
     new Date(),
     urlFacturaGlobal,
-    carpetaOC.getUrl()
+    carpetaOC.getUrl(),
+    urlContrato,
+    urlOCArchivo
   ]);
 
   // Generar el desglose de parcialidades en Calendario_Pagos
@@ -221,6 +233,9 @@ function procesarNuevaOrdenParcialidades(data) {
     success: true,
     folioOC: folioOC,
     carpetaDriveUrl: carpetaOC.getUrl(),
+    contratoUrl: urlContrato,
+    ocArchivoUrl: urlOCArchivo,
+    facturaGlobalUrl: urlFacturaGlobal,
     totalParcialidades: planPagos.length
   };
 }
@@ -700,7 +715,7 @@ function asegurarHojasEstructura(ss) {
     sheetOC.appendRow([
       "Folio_OC", "Proveedor", "RFC", "Correo", "Concepto",
       "Monto_Total", "Total_Abonado", "Saldo_Pendiente",
-      "Plazo_Meses", "Dia_Pago", "Estatus", "Fecha_Creacion", "Factura_Global_URL", "Carpeta_Drive"
+      "Plazo_Meses", "Dia_Pago", "Estatus", "Fecha_Creacion", "Factura_Global_URL", "Carpeta_Drive", "Contrato_URL", "OC_Documento_URL"
     ]);
   }
 
@@ -718,8 +733,12 @@ function asegurarHojasEstructura(ss) {
 function obtenerCarpetaOC(folioOC) {
   let iter = DriveApp.getFoldersByName("CONTROL_PARCIALIDADES_OC");
   let carpetaRaiz = iter.hasNext() ? iter.next() : DriveApp.createFolder("CONTROL_PARCIALIDADES_OC");
+  carpetaRaiz.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  
   let iterOC = carpetaRaiz.getFoldersByName(folioOC);
-  return iterOC.hasNext() ? iterOC.next() : carpetaRaiz.createFolder(folioOC);
+  let carpetaOC = iterOC.hasNext() ? iterOC.next() : carpetaRaiz.createFolder(folioOC);
+  carpetaOC.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return carpetaOC;
 }
 
 function guardarArchivoDriveBlob(carpetaTarget, fileObj, nombreDeseado) {

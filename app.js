@@ -1,7 +1,7 @@
 // app.js - Lógica FrontEnd para Gestión de OC en Parcialidades, Calendario y Control de Facturas/REP
 // Se conecta a Google Apps Script y dispone de fallback reactivo local e interactivo.
 
-const SCRIPT_URL_PARCIALIDADES = "https://script.google.com/macros/s/AKfycbwPtrIZhNw8nJOL_YEy1dEef5xM7pyw34qAntNbdBTWNj4-bxjpfW0tPK9R3iIytPVy/exec";
+const SCRIPT_URL_PARCIALIDADES = "https://script.google.com/macros/s/AKfycbwvUcHpJuqBqKNS9zQRxFq2iF3Ri83JdWMEyXngqEY/dev";
 
 // Estado en memoria
 let estadoApp = {
@@ -118,6 +118,18 @@ async function guardarNuevaOrden(event) {
     facturaData = await archivoABase64(fileInput.files[0]);
   }
 
+  const fileContratoInput = document.getElementById("oc-contrato-file");
+  let contratoData = null;
+  if (fileContratoInput && fileContratoInput.files[0]) {
+    contratoData = await archivoABase64(fileContratoInput.files[0]);
+  }
+
+  const fileOCInput = document.getElementById("oc-archivo-file");
+  let ocArchivoData = null;
+  if (fileOCInput && fileOCInput.files[0]) {
+    ocArchivoData = await archivoABase64(fileOCInput.files[0]);
+  }
+
   const btn = document.getElementById("btn-guardar-oc");
   btn.disabled = true;
   btn.innerText = "Generando Plan y Sincronizando...";
@@ -168,7 +180,10 @@ async function guardarNuevaOrden(event) {
     diaPagoMes: diaPago,
     estatus: "ACTIVA_EN_PAGO",
     fechaCreacion: new Date().toISOString().split('T')[0],
-    facturaGlobalUrl: ""
+    facturaGlobalUrl: "",
+    carpetaDriveUrl: "",
+    contratoUrl: "",
+    ocArchivoUrl: ""
   };
 
   // Guardar en memoria local
@@ -190,9 +205,18 @@ async function guardarNuevaOrden(event) {
       diaPagoMes: diaPago,
       fechaInicioPrimerPago: fechaInicio,
       planPagos: planPagos.map(p => ({ fechaProgramada: p.fechaProgramada, monto: p.montoProgramado })),
-      facturaGlobalFile: facturaData
+      facturaGlobalFile: facturaData,
+      contratoFile: contratoData,
+      ocArchivoFile: ocArchivoData
     });
     console.log("Respuesta Apps Script:", res);
+    if (res && res.carpetaDriveUrl) {
+      nuevaOC.carpetaDriveUrl = res.carpetaDriveUrl;
+      nuevaOC.contratoUrl = res.contratoUrl || "";
+      nuevaOC.ocArchivoUrl = res.ocArchivoUrl || "";
+      nuevaOC.facturaGlobalUrl = res.facturaGlobalUrl || "";
+      guardarEnLocalStorage();
+    }
   } catch (err) {
     console.warn("Aviso de guardado remoto (se conserva localmente):", err);
   }
@@ -202,8 +226,8 @@ async function guardarNuevaOrden(event) {
   inicializarValoresPorDefecto();
   actualizarVistaCompleta();
 
-  // Cerrar modal si estuviera en modal o avisar
-  alert(`✅ ¡Orden de Compra ${folioOC} Registrada con Éxito!\n\nSe programaron ${plazoMeses} parcialidades automáticas en el Calendario.`);
+  // Confirmación
+  alert(`✅ ¡Orden de Compra ${folioOC} Registrada con Éxito!\n\nSe creó la carpeta en Google Drive y se programaron ${plazoMeses} parcialidades en el Calendario.`);
   btn.disabled = false;
   btn.innerText = "✓ Registrar OC y Crear Calendario de Pagos";
 }
@@ -377,9 +401,25 @@ function renderizarTablaOrdenes() {
 
   estadoApp.ordenes.forEach(oc => {
     const porcentajePagado = oc.montoTotal > 0 ? Math.round((oc.totalAbonado / oc.montoTotal) * 100) : 0;
+
+    // Documentos adjuntos rápidos
+    let docsHtml = "";
+    if (oc.facturaGlobalUrl) {
+      docsHtml += `<a href="${oc.facturaGlobalUrl}" target="_blank" class="badge bg-light text-primary border text-decoration-none me-1" title="Ver Factura Global">📄 Factura</a>`;
+    }
+    if (oc.contratoUrl) {
+      docsHtml += `<a href="${oc.contratoUrl}" target="_blank" class="badge bg-light text-success border text-decoration-none me-1" title="Ver Contrato Firmado">📑 Contrato</a>`;
+    }
+    if (oc.ocArchivoUrl) {
+      docsHtml += `<a href="${oc.ocArchivoUrl}" target="_blank" class="badge bg-light text-dark border text-decoration-none me-1" title="Ver Orden de Compra PDF">📝 OC PDF</a>`;
+    }
+
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td><span class="badge bg-light text-primary border font-monospace fs-6">${oc.folioOC}</span></td>
+      <td>
+        <span class="badge bg-light text-primary border font-monospace fs-6">${oc.folioOC}</span>
+        <div class="mt-1">${docsHtml}</div>
+      </td>
       <td>
         <strong class="d-block">${oc.proveedor}</strong>
         <small class="text-muted">RFC: ${oc.rfc || 'N/A'}</small>
@@ -400,13 +440,27 @@ function renderizarTablaOrdenes() {
       </td>
       <td>${generarBadgeEstatusOC(oc.estatus)}</td>
       <td class="text-center">
-        <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" onclick="filtrarParcialidadesPorOC('${oc.folioOC}')">
-          Ver Parcialidades →
-        </button>
+        <div class="d-flex justify-content-center gap-1">
+          ${oc.carpetaDriveUrl
+        ? `<a href="${oc.carpetaDriveUrl}" target="_blank" class="btn btn-sm btn-outline-success py-1 px-2 d-inline-flex align-items-center gap-1" title="Abrir Carpeta en Google Drive con todos los archivos de esta OC">
+                 📁 <span class="d-none d-md-inline">Carpeta Drive</span>
+               </a>`
+        : `<button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2" onclick="abrirCarpetaDriveSimulada('${oc.folioOC}')" title="Ver carpeta">
+                 📁 Carpeta
+               </button>`
+      }
+          <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2" onclick="filtrarParcialidadesPorOC('${oc.folioOC}')" title="Ver calendario y pagos">
+            Parcialidades →
+          </button>
+        </div>
       </td>
     `;
     tbody.appendChild(tr);
   });
+}
+
+function abrirCarpetaDriveSimulada(folioOC) {
+  alert(`📁 Carpeta de Drive para ${folioOC}:\n\nAquí se concentran automáticamente:\n- Contrato firmado\n- Orden de compra en PDF\n- Factura Global PPD\n- Fichas y comprobantes de transferencias\n- CFDI y Recibos Electrónicos de Pago (REP)`);
 }
 
 function renderizarTablaParcialidades() {

@@ -192,9 +192,22 @@
                   <input type="date" id="oc-fecha-inicio" class="form-control form-control-sm" required onchange="previsualizarPlanPagos()">
                 </div>
 
+                <!-- Carga de Documentación de Respaldo -->
                 <div class="col-md-6">
                   <label class="form-label small fw-semibold">Factura Global PPD (Opcional)</label>
                   <input type="file" id="oc-factura-global-file" class="form-control form-control-sm" accept=".pdf,.xml">
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold text-primary">📑 Contrato Firmado (Opcional)</label>
+                  <input type="file" id="oc-contrato-file" class="form-control form-control-sm" accept=".pdf,.docx,.doc">
+                  <div class="form-text small" style="font-size: 11px;">Se guardará en la carpeta de Drive de esta OC.</div>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold text-primary">📄 Documento / PDF de la OC (Opcional)</label>
+                  <input type="file" id="oc-archivo-file" class="form-control form-control-sm" accept=".pdf,.png,.jpg,.jpeg">
+                  <div class="form-text small" style="font-size: 11px;">Orden de compra formal con firmas o cotización.</div>
                 </div>
               </div>
 
